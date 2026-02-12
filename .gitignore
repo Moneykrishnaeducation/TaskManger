@@ -137,3 +137,12 @@ dist
 # Vite logs files
 vite.config.js.timestamp-*
 vite.config.ts.timestamp-*
+
+# Django and static files
+# Ignore Django cache file and cache directories
+django_cache
+**/__pycache__/
+# Static and collected static files
+static/
+staticfiles/
+media/
