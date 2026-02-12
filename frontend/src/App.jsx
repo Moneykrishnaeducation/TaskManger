@@ -1,23 +1,51 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import './App.css'
 import Login from './common/Login'
-import AdminPage from './admin'
-import StaffPage from './staff'
+import AppRoutes from './routes/routes'
 
 function App() {
-  const [user, setUser] = useState(null)
+  const [user, setUser] = useState(() => {
+    try {
+      return JSON.parse(localStorage.getItem('user') || 'null')
+    } catch (e) {
+      return null
+    }
+  })
 
   function handleLogin(payload) {
     setUser(payload)
+    try {
+      const role = payload?.user_type ?? payload?.userType ?? (payload?.is_superuser ? 'admin' : 'staff')
+      const target = role === 'admin' ? '/admin' : '/staff'
+      // navigate to appropriate dashboard
+      window.location.href = target
+    } catch (e) {
+      // fallback: reload so routes update
+      window.location.reload()
+    }
   }
 
   function handleLogout() {
     setUser(null)
+    localStorage.removeItem('user')
+    localStorage.removeItem('access_token')
+    localStorage.removeItem('refresh_token')
+    // ensure route resets
+    window.location.href = '/login'
   }
+
+  // keep localStorage in sync when user state changes (e.g., login callback)
+  useEffect(() => {
+    if (user) {
+      try { localStorage.setItem('user', JSON.stringify(user)) } catch (e) {}
+    }
+  }, [user])
 
   if (!user) {
     return <Login defaultRole="admin" onLogin={handleLogin} />
   }
+
+  const role = user?.user_type ?? user?.userType ?? 'staff'
 
   return (
     <div className="min-h-screen bg-gray-100">
@@ -26,11 +54,11 @@ function App() {
         <div className="max-w-7xl mx-auto px-4 py-4 flex justify-between items-center">
           <div className="flex items-center gap-3">
             <div className={`w-12 h-12 rounded-lg flex items-center justify-center ${
-              user.userType === 'admin'
+              role === 'admin'
                 ? 'bg-gradient-to-br from-blue-600 to-blue-700'
                 : 'bg-gradient-to-br from-green-600 to-emerald-600'
             }`}>
-              {user.userType === 'admin' ? (
+              {role === 'admin' ? (
                 <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
                 </svg>
@@ -42,7 +70,7 @@ function App() {
             </div>
             <div>
               <h1 className="text-xl font-bold text-gray-900">
-                {user.userType === 'admin' ? 'Admin Dashboard' : 'Staff Dashboard'}
+                {role === 'admin' ? 'Admin Dashboard' : 'Staff Dashboard'}
               </h1>
               <p className="text-xs text-gray-500">{user.email}</p>
             </div>
@@ -59,13 +87,9 @@ function App() {
         </div>
       </header>
 
-      {/* Main Content */}
+      {/* Main Content (routes) */}
       <main className="max-w-7xl mx-auto px-4 py-8">
-        {user.userType === 'admin' ? (
-          <AdminPage user={user} />
-        ) : (
-          <StaffPage user={user} />
-        )}
+        <AppRoutes user={user} role={role} />
       </main>
     </div>
   )

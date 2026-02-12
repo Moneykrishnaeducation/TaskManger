@@ -1,8 +1,30 @@
-import React from 'react'
+import React, { useEffect } from 'react'
+import { useNavigate } from 'react-router-dom'
 import ManageTasks from './ManageTasks'
 import Analytics from './Analytics'
 
 export default function AdminPage({ user }) {
+  const navigate = useNavigate()
+
+  useEffect(() => {
+    try {
+      const u = user || JSON.parse(localStorage.getItem('user') || 'null')
+      if (!u) {
+        navigate('/login', { replace: true })
+        return
+      }
+
+      // Allow superusers or explicit admin user_type
+      const isSuper = !!u.is_superuser
+      const isAdminType = (u.user_type || '').toLowerCase() === 'admin'
+      if (!(isSuper || isAdminType)) {
+        // Not an admin -> send to staff dashboard
+        navigate('/staff', { replace: true })
+      }
+    } catch (err) {
+      navigate('/login', { replace: true })
+    }
+  }, [user, navigate])
   const [activeNav, setActiveNav] = React.useState('home')
 
   // Mock stats data
@@ -139,7 +161,7 @@ export default function AdminPage({ user }) {
             <h3 className="text-xl font-bold text-gray-900">Quick Actions</h3>
           </div>
           <div className="space-y-3">
-            <button className="w-full text-left px-4 py-3 bg-white hover:bg-blue-50 rounded-lg transition-all duration-200 flex items-center gap-3 hover:shadow-md border border-blue-100 hover:border-blue-300 group">
+            <button className="w-full text-left px-4 py-3 bg-white hover:bg-blue-50 rounded-lg transition-all duration-200 flex items-center gap-3 hover:shadow-md border border-blue-100 hover:border-blue-300 group" onClick={() => window.location.href = '/admin/manage-tasks'}>
               <div className="bg-blue-100 p-2 rounded-lg group-hover:bg-blue-200 transition-colors">
                 <svg className="w-5 h-5 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01" />
@@ -149,6 +171,12 @@ export default function AdminPage({ user }) {
               <svg className="w-4 h-4 ml-auto text-gray-400 group-hover:text-blue-600 group-hover:translate-x-1 transition-all" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
               </svg>
+            </button>
+            <button className="w-full text-left px-4 py-3 bg-white hover:bg-blue-50 rounded-lg transition-all duration-200 flex items-center gap-3 hover:shadow-md border border-blue-100 hover:border-blue-300 group" onClick={() => window.location.href = '/admin/manage-users'}>
+              <div className="bg-blue-100 p-2 rounded-lg transition-colors">
+                <svg className="w-5 h-5 text-blue-600" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 11c1.657 0 3-1.567 3-3.5S17.657 4 16 4s-3 1.567-3 3.5S14.343 11 16 11zM8 7a4 4 0 100 8 4 4 0 000-8zM8 19v-2a4 4 0 014-4h0a4 4 0 014 4v2"/></svg>
+              </div>
+              <span className="font-semibold text-gray-900">Manage Users</span>
             </button>
           </div>
         </div>

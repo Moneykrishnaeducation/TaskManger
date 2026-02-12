@@ -1,4 +1,5 @@
 from rest_framework import status, viewsets, permissions
+from .permissions import IsAdminOrSuperuser
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -67,6 +68,17 @@ class LoginView(APIView):
             refresh = data.get('refresh')
             access = data.get('access')
             user_data = data.get('user')
+
+            # Ensure superusers and staff are treated with correct `user_type`
+            try:
+                user_obj = User.objects.get(id=user_data.get('id'))
+                if getattr(user_obj, 'is_superuser', False):
+                    user_data['user_type'] = 'admin'
+                elif getattr(user_obj, 'is_staff', False):
+                    # non-superuser staff accounts should be considered 'staff'
+                    user_data['user_type'] = 'staff'
+            except Exception:
+                pass
 
             return Response({
                 'success': True,
@@ -211,6 +223,47 @@ class UserViewSet(viewsets.ModelViewSet):
             'count': users.count(),
             'results': serializer.data
         }, status=status.HTTP_200_OK)
+
+    @action(detail=True, methods=['post'], permission_classes=[IsAdminOrSuperuser])
+    def change_role(self, request, pk=None):
+        """
+        Change a user's role between 'admin' and 'staff'.
+        POST /api/users/{id}/change_role/ with JSON { "target": "admin"|"staff" }
+        Only request.user who is superuser or has user_type=='admin' may perform this.
+        Superusers cannot be modified via this endpoint.
+        """
+        # Authorization check: only superusers or admin users may promote/demote
+        # permission class already enforces actor is superuser or admin-type
+        actor = request.user
+
+        try:
+            target_user = self.get_object()
+        except Exception:
+            return Response({'success': False, 'error': 'User not found.'}, status=status.HTTP_404_NOT_FOUND)
+
+        # Do not allow modifying actual superusers
+        if getattr(target_user, 'is_superuser', False):
+            return Response({'success': False, 'error': 'Cannot modify superuser role.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        target = (request.data.get('target') or '').lower()
+        if target not in ('admin', 'staff', 'student'):
+            return Response({'success': False, 'error': 'Invalid target role.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        # Apply changes
+        if target == 'admin':
+            target_user.user_type = 'admin'
+            target_user.is_staff = True
+        elif target == 'staff':
+            target_user.user_type = 'staff'
+            target_user.is_staff = True
+        else:
+            # student or other -> remove staff status
+            target_user.user_type = 'student'
+            target_user.is_staff = False
+
+        target_user.save()
+
+        return Response({'success': True, 'message': 'Role updated.', 'user': UserSerializer(target_user).data}, status=status.HTTP_200_OK)
 
 
 class CheckEmailView(APIView):

@@ -28,7 +28,7 @@ export default function ManageTasks() {
     setEditingId(null)
   }
 
-  function handleCreate(e) {
+  async function handleCreate(e) {
     e.preventDefault()
     if (!title.trim()) return
     if (editingId) {
@@ -42,6 +42,18 @@ export default function ManageTasks() {
         completed: false,
       }
       setTasks((prev) => [newTask, ...prev])
+
+      // Try to send to backend add API (best-effort; backend may not exist yet)
+      try {
+        await fetch('/api/add/', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(newTask),
+        })
+      } catch (err) {
+        // Network errors are non-fatal for local-only mode
+        console.warn('Add API request failed', err)
+      }
     }
     resetForm()
   }

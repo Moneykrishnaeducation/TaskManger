@@ -1,8 +1,29 @@
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
+import { useNavigate } from 'react-router-dom'
 
 export default function StaffPage({ user }) {
   const [activeNav, setActiveNav] = useState('assigned')
   const [dateFilter, setDateFilter] = useState('today')
+  const navigate = useNavigate()
+
+  useEffect(() => {
+    try {
+      const u = user || JSON.parse(localStorage.getItem('user') || 'null')
+      if (!u) {
+        navigate('/login', { replace: true })
+        return
+      }
+
+      // If user is admin/superuser, redirect to admin dashboard
+      const isAdminType = (u.user_type || '').toLowerCase() === 'admin'
+      const isSuper = !!u.is_superuser
+      if (isAdminType || isSuper) {
+        navigate('/admin', { replace: true })
+      }
+    } catch (err) {
+      navigate('/login', { replace: true })
+    }
+  }, [user, navigate])
 
   // Mock work data
   const assignedWork = [

@@ -59,11 +59,13 @@ ROOT_URLCONF = 'backend.urls'
 TEMPLATES = [
     {
         'BACKEND': 'django.template.backends.django.DjangoTemplates',
-        'DIRS': [],
+        # Include the project `static` directory so TemplateView can find index.html
+        'DIRS': [str(BASE_DIR / 'static')],
         'APP_DIRS': True,
         'OPTIONS': {
             'context_processors': [
                 'django.template.context_processors.request',
+                'django.template.context_processors.static',
                 'django.contrib.auth.context_processors.auth',
                 'django.contrib.messages.context_processors.messages',
             ],
@@ -123,11 +125,18 @@ USE_TZ = True
 # Static files (CSS, JavaScript, Images)
 # https://docs.djangoproject.com/en/5.2/howto/static-files/
 
-STATIC_URL = 'static/'
+# URL path to serve static files
+STATIC_URL = '/static/'
+
+# Project-level directory where you can place the built React app
+# e.g. place the contents of the frontend `build` or `dist` into BASE_DIR / 'static'
+STATICFILES_DIRS = [
+    str(BASE_DIR / 'static'),
+]
 
 # Directory where `collectstatic` will collect static files for deployment.
-# Using BASE_DIR / 'staticfiles' keeps the collected files inside the project.
-STATIC_ROOT = BASE_DIR / 'staticfiles'
+STATIC_ROOT = str(BASE_DIR / 'staticfiles')
+
 
 # Default primary key field type
 # https://docs.djangoproject.com/en/5.2/ref/settings/#default-auto-field

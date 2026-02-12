@@ -1,6 +1,6 @@
 import { useState } from 'react'
 
-const API_BASE = 'http://localhost:8000/api'
+const API_BASE = '/api'
 
 const styles = `
   @keyframes fadeInDown {
@@ -175,16 +175,17 @@ export default function Login({ defaultRole = 'staff', onLogin }) {
     }
 
     try {
+      // Only send credentials; do not send a selected role to avoid
+      // "Selected role does not match this account" errors when the
+      // frontend default differs from the actual user role.
+      const payload = { email: email, password: password }
+
       const response = await fetch(`${API_BASE}/login/`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({
-          email: email,
-          password: password,
-          user_type: userType,
-        }),
+        body: JSON.stringify(payload),
       })
 
       const data = await response.json()
@@ -197,6 +198,10 @@ export default function Login({ defaultRole = 'staff', onLogin }) {
 
       // Backend returns { success, message, user, tokens: { refresh, access } }
       const user = data.user || data.user || null
+      // Normalize backend superuser flag to frontend role
+      if (user && (user.is_superuser || user.is_superuser === true)) {
+        user.user_type = 'admin'
+      }
       const tokens = data.tokens || { access: data.access, refresh: data.refresh }
 
       if (tokens?.access) localStorage.setItem('access_token', tokens.access)
@@ -212,8 +217,8 @@ export default function Login({ defaultRole = 'staff', onLogin }) {
       // Decide redirect based on actual user_type
       const target = (() => {
         if (!user) return '/dashboard'
-        if (user.user_type === 'admin') return '/admin/dashboard'
-        if (user.user_type === 'staff') return '/staff/dashboard'
+        if (user.user_type === 'admin') return '/admin'
+        if (user.user_type === 'staff') return '/staff'
         return '/dashboard'
       })()
 
@@ -441,7 +446,7 @@ export default function Login({ defaultRole = 'staff', onLogin }) {
             {formMode === 'login' && (
               <>
                 {/* User Type Selector - Enhanced */}
-                <div className="flex gap-3 mb-4 bg-gray-100 p-1 rounded-lg">
+                {/* <div className="flex gap-3 mb-4 bg-gray-100 p-1 rounded-lg">
                   <button
                     type="button"
                     onClick={() => setUserType('admin')}
@@ -470,7 +475,7 @@ export default function Login({ defaultRole = 'staff', onLogin }) {
                     </svg>
                     Staff
                   </button>
-                </div>
+                </div> */}
 
                 {/* Form */}
                 <form onSubmit={handleSubmit} className="space-y-3">
@@ -578,7 +583,7 @@ export default function Login({ defaultRole = 'staff', onLogin }) {
             {formMode === 'signup' && (
               <>
                 {/* Account Type Selector - Tabs */}
-                <div className="flex gap-3 mb-4 bg-gray-100 p-1 rounded-lg">
+                {/* <div className="flex gap-3 mb-4 bg-gray-100 p-1 rounded-lg">
                   <button
                     type="button"
                     onClick={() => setSignupType('admin')}
@@ -607,7 +612,7 @@ export default function Login({ defaultRole = 'staff', onLogin }) {
                     </svg>
                     Staff
                   </button>
-                </div>
+                </div> */}
 
                 {/* Form */}
                 <form onSubmit={handleSignup} className="space-y-3">
