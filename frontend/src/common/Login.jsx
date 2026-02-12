@@ -387,7 +387,7 @@ export default function Login({ defaultRole = 'staff', onLogin }) {
               src="/logo.webp" 
               alt="Moneykrishna Education" 
               className="h-14 object-contain"
-              onerror="this.style.display='none'"
+              onError={(e) => { e.currentTarget.style.display = 'none'; }}
             />
             {/* Overlay gradient for depth */}
             <div className="absolute inset-0 bg-gradient-to-b from-transparent via-transparent to-white/10"></div>
