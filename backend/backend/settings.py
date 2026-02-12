@@ -125,6 +125,10 @@ USE_TZ = True
 
 STATIC_URL = 'static/'
 
+# Directory where `collectstatic` will collect static files for deployment.
+# Using BASE_DIR / 'staticfiles' keeps the collected files inside the project.
+STATIC_ROOT = BASE_DIR / 'staticfiles'
+
 # Default primary key field type
 # https://docs.djangoproject.com/en/5.2/ref/settings/#default-auto-field
 
