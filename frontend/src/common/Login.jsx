@@ -144,6 +144,7 @@ const styles = `
 `
 
 export default function Login({ defaultRole = 'staff', onLogin }) {
+  const logoUrl = `${import.meta.env.BASE_URL || '/'}logo.webp`
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [showPassword, setShowPassword] = useState(false)
@@ -326,22 +327,34 @@ export default function Login({ defaultRole = 'staff', onLogin }) {
         return
       }
 
-      // Store tokens after successful registration
-      localStorage.setItem('access_token', data.tokens.access)
-      localStorage.setItem('refresh_token', data.tokens.refresh)
-      localStorage.setItem('user', JSON.stringify(data.user))
+      // Store tokens after successful registration (guard for different response shapes)
+      const accessToken = data.tokens?.access || data.access
+      const refreshToken = data.tokens?.refresh || data.refresh
+      if (accessToken) localStorage.setItem('access_token', accessToken)
+      if (refreshToken) localStorage.setItem('refresh_token', refreshToken)
+      if (data.user) localStorage.setItem('user', JSON.stringify(data.user))
 
-      setSuccessMessage(`Account created! Welcome, ${data.user.first_name}!`)
-      
+      setSuccessMessage(`Account created! Welcome, ${data.user?.first_name || data.user?.email || ''}!`)
+
+      // Decide redirect based on actual user_type (ensure redirect even if parent doesn't)
+      const target = (() => {
+        if (!data.user) return '/dashboard'
+        if (data.user.user_type === 'admin') return '/admin'
+        if (data.user.user_type === 'staff') return '/staff'
+        return '/dashboard'
+      })()
+
       setTimeout(() => {
         resetSignupForm()
         setFormMode('login')
-        if (onLogin) {
-          onLogin(data.user)
-        } else {
-          window.location.href = '/dashboard'
+        try {
+          if (onLogin) onLogin(data.user)
+        } catch (e) {
+          console.error('onLogin callback error:', e)
         }
-      }, 2000)
+        // Always navigate to the determined target to avoid stuck flows
+        window.location.href = target
+      }, 1200)
     } catch (err) {
       console.error('Signup error:', err)
       setError(err.message || 'Connection error. Please check if the server is running on port 8000.')
@@ -388,9 +401,9 @@ export default function Login({ defaultRole = 'staff', onLogin }) {
           {/* Top curved image section with gradient */}
           <div className="relative h-20 bg-white rounded-b-3xl overflow-hidden flex items-start justify-center -pt-1">
             {/* Logo */}
-            <img 
-              src="/logo.webp" 
-              alt="Moneykrishna Education" 
+            <img
+              src={logoUrl}
+              alt="Moneykrishna Education"
               className="h-14 object-contain"
               onError={(e) => { e.currentTarget.style.display = 'none'; }}
             />
