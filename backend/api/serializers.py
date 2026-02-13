@@ -3,6 +3,7 @@ from django.contrib.auth import get_user_model
 from django.contrib.auth.password_validation import validate_password
 from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
 from rest_framework_simplejwt.tokens import RefreshToken
+from .models import Task
 
 User = get_user_model()
 
@@ -175,3 +176,46 @@ class UpdateProfileSerializer(serializers.ModelSerializer):
             setattr(instance, attr, value)
         instance.save()
         return instance
+
+
+class TaskSerializer(serializers.ModelSerializer):
+    """Serializer for Task model"""
+    user = serializers.PrimaryKeyRelatedField(queryset=User.objects.all(), required=False)
+    user_display = serializers.SerializerMethodField(read_only=True)
+
+    class Meta:
+        model = Task
+        fields = ['id', 'user', 'user_display', 'title', 'description', 'status', 'priority', 'deadline', 'created_at', 'updated_at']
+        read_only_fields = ['id', 'created_at', 'updated_at', 'user_display']
+
+    def get_user_display(self, obj):
+        try:
+            return {
+                'id': obj.user.id,
+                'email': getattr(obj.user, 'email', ''),
+                'username': getattr(obj.user, 'username', '')
+            }
+        except Exception:
+            return None
+
+
+class ExportFormatSerializer(serializers.Serializer):
+    """Serializer for export format selection"""
+    FORMAT_CHOICES = [
+        ('json', 'JSON'),
+        ('csv', 'CSV'),
+        ('xml', 'XML'),
+        ('pdf', 'PDF'),
+    ]
+    
+    format = serializers.ChoiceField(choices=FORMAT_CHOICES, required=True)
+    status = serializers.ChoiceField(
+        choices=['all', 'pending', 'in_progress', 'completed'],
+        required=False,
+        default='all'
+    )
+    priority = serializers.ChoiceField(
+        choices=['all', 'low', 'medium', 'high'],
+        required=False,
+        default='all'
+    )

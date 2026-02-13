@@ -7,10 +7,14 @@ from .views import (
     UserViewSet,
     CheckEmailView,
     CheckUsernameView,
+    TaskViewSet,
+    ExportTasksView,
+    TasksForUI,
 )
 
 router = DefaultRouter()
 router.register(r'users', UserViewSet, basename='users')
+router.register(r'tasks', TaskViewSet, basename='tasks')
 
 urlpatterns = [
     # Authentication endpoints
@@ -21,6 +25,11 @@ urlpatterns = [
     # Check availability endpoints
     path('check-email/', CheckEmailView.as_view(), name='check-email'),
     path('check-username/', CheckUsernameView.as_view(), name='check-username'),
+    
+    # Export endpoint
+    path('tasks/export/', ExportTasksView.as_view(), name='export-tasks'),
+    # Grouped tasks for UI
+    path('tasks/view/', TasksForUI.as_view(), name='tasks-for-ui'),
     
     # Router endpoints
     path('', include(router.urls)),

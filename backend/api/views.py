@@ -10,8 +10,17 @@ from .serializers import (
     RegisterSerializer,
     LoginSerializer,
     ChangePasswordSerializer,
-    UpdateProfileSerializer
+    UpdateProfileSerializer,
+    TaskSerializer,
+    ExportFormatSerializer
 )
+from .models import Task
+import json
+import csv
+import io
+from django.http import HttpResponse
+from xml.etree.ElementTree import Element, SubElement, tostring
+from datetime import datetime
 
 User = get_user_model()
 
@@ -314,3 +323,255 @@ class CheckUsernameView(APIView):
             'available': not exists,
             'username': username
         }, status=status.HTTP_200_OK)
+
+
+class TaskViewSet(viewsets.ModelViewSet):
+    """
+    ViewSet for Task management
+    """
+    serializer_class = TaskSerializer
+    permission_classes = [permissions.IsAuthenticated]
+    
+    def get_queryset(self):
+        """Return tasks visible to the current user.
+        Admin/staff users see all tasks; regular users see only their own tasks.
+        """
+        user = self.request.user
+        if user.is_authenticated and (getattr(user, 'is_superuser', False) or getattr(user, 'is_staff', False) or getattr(user, 'user_type', '') == 'admin'):
+            return Task.objects.all()
+        return Task.objects.filter(user=user)
+
+    def perform_create(self, serializer):
+        """Create task. If the request includes a `user` field and the actor is admin/staff,
+        assign the task to that user. Otherwise assign to the request.user.
+        """
+        actor = self.request.user
+        is_actor_admin = actor.is_authenticated and (
+            getattr(actor, 'is_superuser', False)
+            or getattr(actor, 'is_staff', False)
+            or getattr(actor, 'user_type', '') == 'admin'
+        )
+
+        # Default to assigning to the actor
+        assigned_user = actor
+
+        # If actor has permission, prefer the serializer-validated `user` (a User instance).
+        if is_actor_admin:
+            assigned_from_serializer = serializer.validated_data.get('user') if hasattr(serializer, 'validated_data') else None
+            if assigned_from_serializer:
+                assigned_user = assigned_from_serializer
+            else:
+                # Fallback: try request payload id (for backward compatibility)
+                requested_user_id = self.request.data.get('user') or self.request.data.get('user_id')
+                if requested_user_id:
+                    try:
+                        assigned_user = User.objects.get(id=requested_user_id)
+                    except Exception:
+                        assigned_user = actor
+
+        serializer.save(user=assigned_user)
+
+
+class ExportTasksView(APIView):
+    """
+    Export tasks in user-selected format
+    POST /api/tasks/export/
+    Body: {
+        "format": "json|csv|xml|pdf",
+        "status": "all|pending|in_progress|completed",
+        "priority": "all|low|medium|high"
+    }
+    """
+    permission_classes = [permissions.IsAuthenticated]
+    
+    def post(self, request):
+        # Validate format selection
+        serializer = ExportFormatSerializer(data=request.data)
+        if not serializer.is_valid():
+            return Response({
+                'success': False,
+                'errors': serializer.errors
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Get user's tasks
+        queryset = Task.objects.filter(user=request.user)
+        
+        # Apply filters
+        status_filter = serializer.validated_data.get('status', 'all')
+        priority_filter = serializer.validated_data.get('priority', 'all')
+        
+        if status_filter != 'all':
+            queryset = queryset.filter(status=status_filter)
+        if priority_filter != 'all':
+            queryset = queryset.filter(priority=priority_filter)
+        
+        export_format = serializer.validated_data.get('format')
+        tasks = queryset.values('id', 'title', 'description', 'status', 'priority', 'deadline', 'created_at')
+        
+        if export_format == 'json':
+            return self._export_json(tasks)
+        elif export_format == 'csv':
+            return self._export_csv(tasks)
+        elif export_format == 'xml':
+            return self._export_xml(tasks)
+        elif export_format == 'pdf':
+            return self._export_pdf(tasks)
+        
+        return Response({
+            'success': False,
+            'error': 'Invalid format specified.'
+        }, status=status.HTTP_400_BAD_REQUEST)
+    
+    def _export_json(self, tasks):
+        """Export tasks as JSON"""
+        tasks_list = list(tasks)
+        # Convert datetime objects to strings
+        for task in tasks_list:
+            if task['deadline']:
+                task['deadline'] = task['deadline'].isoformat()
+            if task['created_at']:
+                task['created_at'] = task['created_at'].isoformat()
+        
+        response = HttpResponse(
+            json.dumps({'tasks': tasks_list}, indent=2),
+            content_type='application/json'
+        )
+        response['Content-Disposition'] = 'attachment; filename="tasks_export.json"'
+        return response
+
+
+class TasksForUI(APIView):
+    """Provide grouped tasks for the frontend staff UI.
+
+    GET /api/tasks/view/
+    Returns JSON: { assigned: [...], pending: [...], completed: [...] }
+    The view respects TaskViewSet.get_queryset visibility rules.
+    """
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        # Reuse TaskViewSet.get_queryset to respect permissions
+        try:
+            viewset = TaskViewSet()
+            viewset.request = request
+            queryset = viewset.get_queryset()
+        except Exception:
+            queryset = Task.objects.none()
+
+        # Serialize full tasks (use TaskSerializer)
+        serializer = TaskSerializer(queryset, many=True, context={'request': request})
+        tasks = serializer.data
+
+        # Group tasks
+        assigned = [t for t in tasks]
+        pending = [t for t in tasks if (t.get('status') or 'pending') != 'completed']
+        completed = [t for t in tasks if (t.get('status') or '') == 'completed']
+
+        return Response({
+            'assigned': assigned,
+            'pending': pending,
+            'completed': completed,
+        }, status=status.HTTP_200_OK)
+    
+    def _export_csv(self, tasks):
+        """Export tasks as CSV"""
+        response = HttpResponse(content_type='text/csv')
+        response['Content-Disposition'] = 'attachment; filename="tasks_export.csv"'
+        
+        writer = csv.DictWriter(
+            response,
+            fieldnames=['id', 'title', 'description', 'status', 'priority', 'deadline', 'created_at']
+        )
+        writer.writeheader()
+        
+        for task in tasks:
+            task_copy = dict(task)
+            if task_copy['deadline']:
+                task_copy['deadline'] = task_copy['deadline'].isoformat()
+            if task_copy['created_at']:
+                task_copy['created_at'] = task_copy['created_at'].isoformat()
+            writer.writerow(task_copy)
+        
+        return response
+    
+    def _export_xml(self, tasks):
+        """Export tasks as XML"""
+        root = Element('tasks')
+        root.set('exported', datetime.now().isoformat())
+        
+        for task in tasks:
+            task_elem = SubElement(root, 'task')
+            SubElement(task_elem, 'id').text = str(task['id'])
+            SubElement(task_elem, 'title').text = str(task['title'] or '')
+            SubElement(task_elem, 'description').text = str(task['description'] or '')
+            SubElement(task_elem, 'status').text = str(task['status'] or '')
+            SubElement(task_elem, 'priority').text = str(task['priority'] or '')
+            SubElement(task_elem, 'deadline').text = task['deadline'].isoformat() if task['deadline'] else 'N/A'
+            SubElement(task_elem, 'created_at').text = task['created_at'].isoformat() if task['created_at'] else 'N/A'
+        
+        xml_str = tostring(root, encoding='unicode')
+        response = HttpResponse(xml_str, content_type='application/xml')
+        response['Content-Disposition'] = 'attachment; filename="tasks_export.xml"'
+        return response
+    
+    def _export_pdf(self, tasks):
+        """Export tasks as PDF"""
+        try:
+            from reportlab.lib.pagesizes import letter
+            from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+            from reportlab.lib.units import inch
+            from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
+            from reportlab.lib import colors
+            from datetime import datetime
+            
+            response = HttpResponse(content_type='application/pdf')
+            response['Content-Disposition'] = 'attachment; filename="tasks_export.pdf"'
+            
+            # Create PDF
+            doc = SimpleDocTemplate(response, pagesize=letter)
+            elements = []
+            styles = getSampleStyleSheet()
+            
+            # Title
+            title_style = ParagraphStyle(
+                'CustomTitle',
+                parent=styles['Heading1'],
+                fontSize=24,
+                textColor=colors.HexColor('#1f2937'),
+                spaceAfter=30
+            )
+            elements.append(Paragraph('Task Export', title_style))
+            elements.append(Spacer(1, 0.2 * inch))
+            
+            # Tasks table
+            data = [['ID', 'Title', 'Status', 'Priority', 'Deadline']]
+            for task in tasks:
+                data.append([
+                    str(task['id']),
+                    task['title'][:30] or 'N/A',
+                    task['status'] or 'N/A',
+                    task['priority'] or 'N/A',
+                    task['deadline'].strftime('%Y-%m-%d') if task['deadline'] else 'N/A'
+                ])
+            
+            table = Table(data, colWidths=[0.8*inch, 2.2*inch, 1*inch, 1*inch, 1.2*inch])
+            table.setStyle(TableStyle([
+                ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#3b82f6')),
+                ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+                ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+                ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+                ('FONTSIZE', (0, 0), (-1, 0), 12),
+                ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
+                ('BACKGROUND', (0, 1), (-1, -1), colors.beige),
+                ('GRID', (0, 0), (-1, -1), 1, colors.grey)
+            ]))
+            
+            elements.append(table)
+            doc.build(elements)
+            
+            return response
+        except ImportError:
+            return Response({
+                'success': False,
+                'error': 'PDF export requires reportlab. Please install it: pip install reportlab'
+            }, status=status.HTTP_400_BAD_REQUEST)

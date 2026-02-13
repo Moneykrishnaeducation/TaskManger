@@ -16,6 +16,63 @@ export default function ManageTasks() {
   const [editingId, setEditingId] = useState(null)
   const [filter, setFilter] = useState('all')
   const [dateFilter, setDateFilter] = useState('any')
+  const [exportFormat, setExportFormat] = useState('json')
+  const [exportLoading, setExportLoading] = useState(false)
+  const [exportError, setExportError] = useState('')
+  const [authToken, setAuthToken] = useState(() => localStorage.getItem('access_token') || localStorage.getItem('authToken') || '')
+  const [usersList, setUsersList] = useState([])
+  const [assigneeId, setAssigneeId] = useState(() => {
+    try {
+      const u = JSON.parse(localStorage.getItem('user') || 'null')
+      return u?.id || ''
+    } catch (e) {
+      return ''
+    }
+  })
+
+  useEffect(() => {
+    // Keep authToken state in sync with localStorage (handles SPA login and other tabs)
+    const readToken = () => {
+      const t = localStorage.getItem('access_token') || localStorage.getItem('authToken') || ''
+      setAuthToken(t)
+      console.debug('ManageTasks: authToken read (present?):', !!t)
+    }
+
+    // Initial read
+    readToken()
+
+    // Update when storage changes in other tabs
+    const onStorage = (e) => {
+      if (!e) return
+      if (e.key === 'access_token' || e.key === 'authToken' || e.key === 'user') {
+        readToken()
+      }
+    }
+
+    // Also update when the window regains focus (login may happen in same tab without reload)
+    window.addEventListener('storage', onStorage)
+    window.addEventListener('focus', readToken)
+
+    return () => {
+      window.removeEventListener('storage', onStorage)
+      window.removeEventListener('focus', readToken)
+    }
+  }, [])
+
+  // Fetch users list for assignee select (public GET should be allowed)
+  useEffect(() => {
+    let mounted = true
+    fetch('/api/users/')
+      .then((r) => r.json())
+      .then((data) => {
+        if (!mounted) return
+        // Router returns { results: [...] } or plain list depending on DRF settings
+        const list = Array.isArray(data) ? data : data.results || []
+        setUsersList(list)
+      })
+      .catch((err) => console.debug('Failed to load users list', err))
+    return () => { mounted = false }
+  }, [])
 
   useEffect(() => {
     localStorage.setItem('mk_tasks', JSON.stringify(tasks))
@@ -31,28 +88,93 @@ export default function ManageTasks() {
   async function handleCreate(e) {
     e.preventDefault()
     if (!title.trim()) return
+    
+    const token = localStorage.getItem('access_token') || localStorage.getItem('authToken')
+    console.debug('handleCreate: authToken present?', !!token)
+    
     if (editingId) {
-      setTasks((prev) => prev.map((t) => (t.id === editingId ? { ...t, title, desc, deadline } : t)))
+      // Update existing task
+      const taskToUpdate = tasks.find(t => t.id === editingId)
+      if (!taskToUpdate) return
+      
+      const updatedData = {
+        title: title.trim(),
+        description: desc.trim(),
+        deadline: deadline || null,
+        status: taskToUpdate.completed ? 'completed' : 'pending',
+        priority: 'medium',
+      }
+      
+      // Update local state
+      setTasks((prev) => prev.map((t) => (t.id === editingId ? { ...t, ...updatedData } : t)))
+      
+      // Try to update on backend
+      if (token && taskToUpdate.backendId) {
+        try {
+          await fetch(`/api/tasks/${taskToUpdate.backendId}/`, {
+            method: 'PATCH',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${token}`
+            },
+            body: JSON.stringify(updatedData),
+          })
+        } catch (err) {
+          console.warn('Task update API request failed', err)
+        }
+      }
     } else {
+      // Create new task
       const newTask = {
         id: Date.now(),
         title: title.trim(),
         desc: desc.trim(),
+        description: desc.trim(),
         deadline: deadline || null,
         completed: false,
+        status: 'pending',
+        priority: 'medium',
+        backendId: null,
       }
+      
       setTasks((prev) => [newTask, ...prev])
 
-      // Try to send to backend add API (best-effort; backend may not exist yet)
-      try {
-        await fetch('/api/add/', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(newTask),
-        })
-      } catch (err) {
-        // Network errors are non-fatal for local-only mode
-        console.warn('Add API request failed', err)
+      // Try to send to backend API
+      if (token) {
+        try {
+          const payload = {
+            title: newTask.title,
+            description: newTask.description,
+            status: newTask.status,
+            priority: newTask.priority,
+            deadline: newTask.deadline,
+          }
+          // include assignee if selected (admin/staff only on backend will accept)
+          if (assigneeId) payload.user = assigneeId
+
+          const response = await fetch('/api/tasks/', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${token}`
+            },
+                body: JSON.stringify(payload),
+          })
+          console.debug('Task create response status:', response.status)
+          if (response.ok) {
+            const backendTask = await response.json()
+            // Update local task with backend ID
+            setTasks((prev) => prev.map((t) => 
+              t.id === newTask.id ? { ...t, backendId: backendTask.id } : t
+            ))
+          } else {
+            const errText = await response.text().catch(() => '')
+            console.warn('Task create failed:', response.status, errText)
+          }
+        } catch (err) {
+          // Network errors are non-fatal for local-only mode
+          console.warn('Task creation API request failed', err)
+        }
       }
     }
     resetForm()
@@ -77,6 +199,62 @@ export default function ManageTasks() {
 
   function toggleComplete(id) {
     setTasks((prev) => prev.map((t) => (t.id === id ? { ...t, completed: !t.completed } : t)))
+  }
+
+  async function handleExport() {
+    try {
+      setExportLoading(true)
+      setExportError('')
+      
+      // Get auth token from localStorage
+      const token = localStorage.getItem('access_token') || localStorage.getItem('authToken')
+      if (!token) {
+        setExportError('Please login to export tasks')
+        return
+      }
+
+      const response = await fetch('/api/tasks/export/', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          format: exportFormat,
+          status: 'all',
+          priority: 'all'
+        })
+      })
+
+      if (!response.ok) {
+        const error = await response.json()
+        throw new Error(error.error || 'Export failed')
+      }
+
+      // Get filename from content-disposition header or use default
+      const contentDisposition = response.headers.get('content-disposition')
+      let filename = `tasks_export.${exportFormat}`
+      if (contentDisposition) {
+        const match = contentDisposition.match(/filename="?([^"]+)"?/)
+        if (match) filename = match[1]
+      }
+
+      // Download the file
+      const blob = await response.blob()
+      const url = window.URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = filename
+      document.body.appendChild(a)
+      a.click()
+      window.URL.revokeObjectURL(url)
+      document.body.removeChild(a)
+    } catch (error) {
+      console.error('Export error:', error)
+      setExportError(error.message || 'Failed to export tasks')
+    } finally {
+      setExportLoading(false)
+    }
   }
 
   const counts = useMemo(() => {
@@ -120,30 +298,53 @@ export default function ManageTasks() {
 
   return (
     <div className="space-y-6">
+      {/* Auth status banner */}
+      {!authToken ? (
+        <div className="bg-yellow-50 border-l-4 border-yellow-400 text-yellow-800 p-3 rounded">
+          You are not logged in. Tasks will be stored locally and not synced to the server. Log in to enable API sync.
+        </div>
+      ) : (
+        <div className="bg-green-50 border-l-4 border-green-400 text-green-800 p-3 rounded">
+          Logged in: API sync enabled.
+        </div>
+      )}
       {/* Form and Stats Section */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4 items-start">
         {/* Create Task Form */}
         <form onSubmit={handleCreate} className="bg-white rounded-xl shadow-md p-4 sm:p-6">
-          <h3 className="text-lg font-semibold mb-3">{editingId ? 'Edit Task' : 'Create Task'}</h3>
+          <h3 className="text-lg font-semibold mb-4">{editingId ? 'Edit Task' : 'Create Task'}</h3>
           <input
             value={title}
             onChange={(e) => setTitle(e.target.value)}
             placeholder="Task title"
-            className="w-full px-3 py-2 border rounded-lg mb-3"
+            className="w-full px-4 py-3 mb-4 bg-gradient-to-r from-gray-50 to-gray-100 border-2 border-gray-200 rounded-xl focus:outline-none focus:border-blue-500 focus:from-blue-50 focus:to-blue-100 transition-all duration-200 font-medium placeholder-gray-400 shadow-sm hover:border-gray-300"
           />
+          <label className="text-sm font-medium text-gray-700 mb-1 block">Assign To</label>
+          <select
+            value={assigneeId}
+            onChange={(e) => setAssigneeId(e.target.value)}
+            className="w-full px-4 py-2 mb-4 bg-white border-2 border-gray-200 rounded-lg focus:outline-none"
+          >
+            <option value="">Assign to me (default)</option>
+            {usersList.map((u) => (
+              <option key={u.id} value={u.id}>
+                {u.first_name ? `${u.first_name} ${u.last_name || ''}` : (u.username || u.email)}
+              </option>
+            ))}
+          </select>
           <textarea
             value={desc}
             onChange={(e) => setDesc(e.target.value)}
             placeholder="Description (optional)"
-            className="w-full px-3 py-2 border rounded-lg mb-3"
+            className="w-full px-4 py-3 mb-4 bg-gradient-to-r from-gray-50 to-gray-100 border-2 border-gray-200 rounded-xl focus:outline-none focus:border-blue-500 focus:from-blue-50 focus:to-blue-100 transition-all duration-200 placeholder-gray-400 shadow-sm hover:border-gray-300"
             rows={3}
           />
-          <label className="text-sm text-gray-600 mb-1 block">Deadline</label>
+          <label className="text-sm font-medium text-gray-700 mb-2 block">Deadline</label>
           <input
             type="date"
             value={deadline}
             onChange={(e) => setDeadline(e.target.value)}
-            className="w-full px-3 py-2 border rounded-lg mb-3"
+            className="w-full px-4 py-3 mb-4 bg-gradient-to-r from-gray-50 to-gray-100 border-2 border-gray-200 rounded-xl focus:outline-none focus:border-blue-500 focus:from-blue-50 focus:to-blue-100 transition-all duration-200 placeholder-gray-400 shadow-sm hover:border-gray-300"
           />
           <div className="flex gap-2">
             <button
@@ -182,38 +383,73 @@ export default function ManageTasks() {
           </div>
 
           {/* Filter Controls */}
-          <div className="flex flex-col sm:flex-row sm:items-center gap-3">
-            <div className="flex flex-wrap gap-2">
-              <button
-                onClick={() => setFilter('all')}
-                className={`px-3 py-2 rounded-lg ${filter === 'all' ? 'bg-blue-600 text-white' : 'bg-gray-100'}`}
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4 pb-4 border-b">
+            <div className="flex flex-col sm:flex-row sm:items-center gap-3 flex-1">
+              <div className="flex flex-wrap gap-2">
+                <button
+                  onClick={() => setFilter('all')}
+                  className={`px-3 py-2 rounded-lg ${filter === 'all' ? 'bg-blue-600 text-white' : 'bg-gray-100'}`}
+                >
+                  All
+                </button>
+                <button
+                  onClick={() => setFilter('pending')}
+                  className={`px-3 py-2 rounded-lg ${filter === 'pending' ? 'bg-orange-600 text-white' : 'bg-gray-100'}`}
+                >
+                  Pending
+                </button>
+                <button
+                  onClick={() => setFilter('completed')}
+                  className={`px-3 py-2 rounded-lg ${filter === 'completed' ? 'bg-green-600 text-white' : 'bg-gray-100'}`}
+                >
+                  Completed
+                </button>
+              </div>
+              <select
+                value={dateFilter}
+                onChange={(e) => setDateFilter(e.target.value)}
+                className="px-3 py-2 border rounded-lg w-full sm:w-auto"
               >
-                All
-              </button>
-              <button
-                onClick={() => setFilter('pending')}
-                className={`px-3 py-2 rounded-lg ${filter === 'pending' ? 'bg-orange-600 text-white' : 'bg-gray-100'}`}
-              >
-                Pending
-              </button>
-              <button
-                onClick={() => setFilter('completed')}
-                className={`px-3 py-2 rounded-lg ${filter === 'completed' ? 'bg-green-600 text-white' : 'bg-gray-100'}`}
-              >
-                Completed
-              </button>
+                <option value="any">Any</option>
+                <option value="overdue">Overdue</option>
+                <option value="today">Today</option>
+                <option value="week">This week</option>
+                <option value="no-deadline">No deadline</option>
+              </select>
             </div>
-            <select
-              value={dateFilter}
-              onChange={(e) => setDateFilter(e.target.value)}
-              className="px-3 py-2 border rounded-lg w-full sm:w-auto"
+          </div>
+
+          {/* Export Section */}
+          <div className="flex flex-col sm:flex-row sm:items-center gap-3">
+            <div className="flex-1 flex flex-col sm:flex-row sm:items-center gap-2">
+              <label className="text-sm font-medium text-gray-700">Export Format:</label>
+              <select
+                value={exportFormat}
+                onChange={(e) => setExportFormat(e.target.value)}
+                className="flex-1 px-4 py-2 border-2 border-gray-200 rounded-lg focus:outline-none focus:border-blue-500 transition-colors bg-gradient-to-r from-gray-50 to-gray-100"
+              >
+                <option value="json">📄 JSON (Data Interchange)</option>
+                <option value="csv">📊 CSV (Spreadsheet)</option>
+                <option value="xml">🔗 XML (Enterprise)</option>
+                <option value="pdf">📑 PDF (Professional)</option>
+              </select>
+            </div>
+            <button
+              onClick={handleExport}
+              disabled={exportLoading || counts.total === 0}
+              className={`px-6 py-2 rounded-lg font-medium transition-all ${
+                exportLoading || counts.total === 0
+                  ? 'bg-gray-300 cursor-not-allowed text-gray-600'
+                  : 'bg-gradient-to-r from-green-500 to-green-600 hover:from-green-600 hover:to-green-700 text-white shadow-md hover:shadow-lg'
+              }`}
             >
-              <option value="any">Any</option>
-              <option value="overdue">Overdue</option>
-              <option value="today">Today</option>
-              <option value="week">This week</option>
-              <option value="no-deadline">No deadline</option>
-            </select>
+              {exportLoading ? 'Exporting...' : '⬇️ Export'}
+            </button>
+            {exportError && (
+              <div className="w-full sm:w-auto text-red-600 text-sm bg-red-50 p-2 rounded-lg">
+                {exportError}
+              </div>
+            )}
           </div>
         </div>
       </div>
