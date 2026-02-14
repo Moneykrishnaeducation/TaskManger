@@ -10,6 +10,7 @@ const Sidebar = () => {
     { path: '/staff/dashboard', label: 'Dashboard', icon: BarChart3 },
     { path: '/staff/tasks', label: 'My Tasks', icon: ClipboardList },
     { path: '/staff/attendance', label: 'Attendance', icon: Calendar },
+    { path: '/staff/lead', label: 'Lead Dashboard', icon: BarChart3 },
   ];
 
   return (

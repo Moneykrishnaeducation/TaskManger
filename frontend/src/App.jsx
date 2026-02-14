@@ -19,6 +19,7 @@ import StaffDashboard from './pages/staff/Dashboard';
 import StaffMyTasks from './pages/staff/MyTasks';
 import StaffTaskDetail from './pages/staff/TaskDetail';
 import StaffAttendance from './pages/staff/Attendance';
+import StaffProfile from './pages/staff/Profile';
 
 import SalesPrivateRoute from './components/sales/PrivateRoute';
 import SalesLayout from './components/sales/SalesLayout';
@@ -27,6 +28,7 @@ import SalesLeads from './pages/sales/Leads';
 import AccountOpening from './pages/sales/AccountOpening';
 import StatusUpdate from './pages/sales/StatusUpdate';
 import SalesAttendance from './pages/sales/Attendance';
+import SalesProfile from './pages/sales/ViewProfile';
 
 function App() {
   const [initialized, setInitialized] = useState(false);
@@ -72,6 +74,7 @@ function App() {
           <Route path="/staff/tasks" element={<StaffMyTasks />} />
           <Route path="/staff/tasks/:id" element={<StaffTaskDetail />} />
           <Route path="/staff/attendance" element={<StaffAttendance />} />
+          <Route path="/staff/profile" element={<StaffProfile />} />
         </Route>
 
         <Route element={<SalesPrivateRoute><SalesLayout /></SalesPrivateRoute>}>
@@ -80,6 +83,7 @@ function App() {
           <Route path="/sales/account-opening" element={<AccountOpening />} />
           <Route path="/sales/status-update" element={<StatusUpdate />} />
           <Route path="/sales/attendance" element={<SalesAttendance />} />
+          <Route path="/sales/profile" element={<SalesProfile />} />
         </Route>
 
         <Route path="/" element={<Navigate to="/login" replace />} />

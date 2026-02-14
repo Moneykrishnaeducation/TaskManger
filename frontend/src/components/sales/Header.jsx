@@ -32,11 +32,22 @@ const Header = () => {
               <ChevronDown className="w-4 h-4" />
             </button>
 
-            {showMenu && (
+           {showMenu && (
               <div className="absolute right-0 mt-2 w-48 bg-white rounded-lg shadow-lg z-10">
                 <button
+                  onClick={() => {
+                    setShowMenu(false);
+                    navigate('/sales/profile');
+                  }}
+                  className="w-full flex items-center space-x-2 px-4 py-2 text-gray-700 hover:bg-gray-100 rounded-t-lg"
+                  aria-label="Go to profile page"
+                >
+                  <User className="w-4 h-4" />
+                  <span>View Profile</span>
+                </button>
+                <button
                   onClick={handleLogout}
-                  className="w-full flex items-center space-x-2 px-4 py-2 text-red-600 hover:bg-red-50 rounded-t-lg"
+                  className="w-full flex items-center space-x-2 px-4 py-2 text-red-600 hover:bg-red-50 rounded-b-lg"
                 >
                   <LogOut className="w-4 h-4" />
                   <span>Logout</span>
