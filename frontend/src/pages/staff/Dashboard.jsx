@@ -1,11 +1,15 @@
 import { useEffect, useState } from 'react';
-import { CheckSquare, Clock, AlertCircle } from 'lucide-react';
+import { CheckSquare, Clock, AlertCircle, ListChecks, Hourglass, Loader, BadgeCheck } from 'lucide-react';
 import { getStaffStats, getStaffTasks } from '../../services/api';
+import { useNavigate } from 'react-router-dom';
+import { PieChart, Pie, Cell, Legend, Tooltip, ResponsiveContainer } from 'recharts';
 
 const StaffDashboard = () => {
   const [stats, setStats] = useState(null);
   const [tasks, setTasks] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [filterStatus, setFilterStatus] = useState('Pending');
+  const navigate = useNavigate();
 
   useEffect(() => {
     fetchStatsAndTasks();
@@ -73,11 +77,25 @@ const StaffDashboard = () => {
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-        <StatCard icon={CheckSquare} label="Total Tasks" value={stats.totalTasks} color="bg-purple-500" />
-        <StatCard icon={AlertCircle} label="Pending Tasks" value={stats.pendingTasks} color="bg-red-500" />
-        <StatCard icon={Clock} label="In Progress" value={stats.inProgressTasks} color="bg-yellow-500" />
-        <StatCard icon={CheckSquare} label="Completed" value={stats.completedTasks} color="bg-green-500" />
+        <StatCard icon={ListChecks} label="Total Tasks" value={stats.totalTasks} color="bg-purple-500" />
+        <StatCard icon={Hourglass} label="Pending Tasks" value={stats.pendingTasks} color="bg-red-500" />
+        <StatCard icon={Loader} label="In Progress" value={stats.inProgressTasks} color="bg-yellow-500" />
+        <StatCard icon={BadgeCheck} label="Completed" value={stats.completedTasks} color="bg-green-500" />
+        <StatCard 
+          icon={BadgeCheck} 
+          label="Check In" 
+          value={stats.checkIn ? new Date(stats.checkIn).toLocaleTimeString() : '—'} 
+          color="bg-blue-500" 
+        />
+        <StatCard 
+          icon={BadgeCheck} 
+          label="Check Out" 
+          value={stats.checkOut ? new Date(stats.checkOut).toLocaleTimeString() : '—'} 
+          color="bg-indigo-500" 
+        />
       </div>
+      
+
 
       {/* My Tasks Table */}
       <div className="bg-white rounded-xl shadow-md mt-8">
@@ -97,12 +115,27 @@ const StaffDashboard = () => {
               </tr>
             </thead>
             <tbody className="bg-white divide-y divide-gray-100">
-              {tasks.length === 0 ? (
-                <tr>
-                  <td colSpan="5" className="text-center py-8 text-gray-400">No tasks found</td>
-                </tr>
-              ) : (
-                tasks.map((task) => (
+              {(() => {
+                const filteredTasks = tasks.filter(task => {
+                  if (filterStatus === 'Pending') {
+                    return task.status === 'Pending' || task.status === 'pending';
+                  }
+                  if (filterStatus === 'In Progress') {
+                    return task.status === 'In Progress' || task.status === 'in_progress';
+                  }
+                  if (filterStatus === 'Completed') {
+                    return task.status === 'Completed' || task.status === 'completed';
+                  }
+                  return true;
+                });
+                if (filteredTasks.length === 0) {
+                  return (
+                    <tr>
+                      <td colSpan="6" className="text-center py-8 text-gray-400">No tasks found</td>
+                    </tr>
+                  );
+                }
+                return filteredTasks.map((task) => (
                   <tr key={task.id} className="hover:bg-gray-50">
                     <td className="px-6 py-4 whitespace-nowrap text-gray-900">{task.title || task.name}</td>
                     {/* <td className="px-6 py-4 whitespace-nowrap">
@@ -114,9 +147,9 @@ const StaffDashboard = () => {
                         {task.priority}
                       </span>
                     </td> */}
-                     <td className="px-6 py-4 max-w-xs text-sm text-gray-600">
-                    <div className="line-clamp-2">{task.description}</div>
-                  </td>
+                    <td className="px-6 py-4 max-w-xs text-sm text-gray-600">
+                      <div className="line-clamp-2">{task.description}</div>
+                    </td>
                     <td className="px-6 py-4 whitespace-nowrap">
                       <span className={`px-3 py-1 rounded-full text-xs font-semibold 
                         ${task.status === 'Pending' || task.status === 'pending' ? 'bg-red-500 text-white' : ''}
@@ -127,9 +160,8 @@ const StaffDashboard = () => {
                       </span>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                    {task.deadline ? new Date(task.deadline).toLocaleString() : '—'}
-                  </td>
-
+                      {task.deadline ? new Date(task.deadline).toLocaleString() : '—'}
+                    </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                       {(task.status === 'Completed' || task.status === 'completed')
                         ? (task.completed_at
@@ -138,15 +170,57 @@ const StaffDashboard = () => {
                         : '—'}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
-                      <button className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-1 rounded-lg font-medium text-sm transition">View</button>
+                      <button
+                        className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-1 rounded-lg font-medium text-sm transition"
+                        onClick={() => navigate(`/staff/tasks/`)}
+                      >
+                        View
+                      </button>
                     </td>
                   </tr>
-                ))
-              )}
+                ));
+              })()}
             </tbody>
           </table>
         </div>
       </div>
+
+      {/* Monthly Tasks Pie Chart */}
+      {stats.totalTasks > 0 && (
+        <div className="bg-white rounded-xl shadow-md p-6">
+          <h2 className="text-xl font-semibold text-gray-900 mb-4">Monthly Task Status</h2>
+          <div className="h-80">
+            <ResponsiveContainer width="100%" height="100%">
+              <PieChart>
+                <Pie
+                  data={[
+                    { name: 'Pending', value: stats.pendingTasks, color: '#ef4444' },
+                    { name: 'In Progress', value: stats.inProgressTasks, color: '#eab308' },
+                    { name: 'Completed', value: stats.completedTasks, color: '#22c55e' }
+                  ].filter(item => item.value > 0)}
+                  cx="50%"
+                  cy="50%"
+                  innerRadius={60}
+                  outerRadius={100}
+                  paddingAngle={5}
+                  dataKey="value"
+                  label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
+                >
+                  {[
+                    { name: 'Pending', value: stats.pendingTasks, color: '#ef4444' },
+                    { name: 'In Progress', value: stats.inProgressTasks, color: '#eab308' },
+                    { name: 'Completed', value: stats.completedTasks, color: '#22c55e' }
+                  ].filter(item => item.value > 0).map((entry, index) => (
+                    <Cell key={`cell-${index}`} fill={entry.color} />
+                  ))}
+                </Pie>
+                <Tooltip />
+                <Legend />
+              </PieChart>
+            </ResponsiveContainer>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
