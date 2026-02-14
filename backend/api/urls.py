@@ -1,36 +1,17 @@
 from django.urls import path, include
 from rest_framework.routers import DefaultRouter
 from rest_framework_simplejwt.views import TokenRefreshView
-from .views import (
-    RegisterView,
-    LoginView,
-    UserViewSet,
-    CheckEmailView,
-    CheckUsernameView,
-    TaskViewSet,
-    ExportTasksView,
-    TasksForUI,
-)
+from .views import LoginView, RegisterView, UserViewSet, AttendanceViewSet, AdminTaskViewSet, StaffTaskViewSet
 
 router = DefaultRouter()
-router.register(r'users', UserViewSet, basename='users')
-router.register(r'tasks', TaskViewSet, basename='tasks')
+router.register(r'users', UserViewSet)
+router.register(r'attendance', AttendanceViewSet)
+router.register(r'tasks', AdminTaskViewSet, basename='tasks')
+router.register(r'staff/tasks', StaffTaskViewSet, basename='staff-tasks')
 
 urlpatterns = [
-    # Authentication endpoints
-    path('register/', RegisterView.as_view(), name='register'),
     path('login/', LoginView.as_view(), name='login'),
+    path('register/', RegisterView.as_view(), name='register'),
     path('token/refresh/', TokenRefreshView.as_view(), name='token_refresh'),
-    
-    # Check availability endpoints
-    path('check-email/', CheckEmailView.as_view(), name='check-email'),
-    path('check-username/', CheckUsernameView.as_view(), name='check-username'),
-    
-    # Export endpoint
-    path('tasks/export/', ExportTasksView.as_view(), name='export-tasks'),
-    # Grouped tasks for UI
-    path('tasks/view/', TasksForUI.as_view(), name='tasks-for-ui'),
-    
-    # Router endpoints
     path('', include(router.urls)),
 ]

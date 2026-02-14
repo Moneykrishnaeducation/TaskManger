@@ -1,221 +1,71 @@
 from rest_framework import serializers
-from django.contrib.auth import get_user_model
-from django.contrib.auth.password_validation import validate_password
-from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
 from rest_framework_simplejwt.tokens import RefreshToken
+from .models import User, Attendance
 from .models import Task
 
-User = get_user_model()
 
 class UserSerializer(serializers.ModelSerializer):
-    """Serializer for User model"""
+    full_name = serializers.SerializerMethodField(read_only=True)
+
     class Meta:
         model = User
-        fields = ['id', 'email', 'username', 'first_name', 'last_name', 'user_type', 'phone', 'bio', 'profile_picture', 'is_verified', 'created_at']
-        read_only_fields = ['id', 'created_at', 'is_verified']
+        fields = ('id', 'username', 'email', 'first_name', 'last_name', 'full_name', 'user_type', 'is_verified', 'is_staff', 'is_superuser')
+
+    def get_full_name(self, obj):
+        full = f"{getattr(obj, 'first_name', '') or ''} {getattr(obj, 'last_name', '') or ''}".strip()
+        return full if full else obj.username
 
 
+class AttendanceSerializer(serializers.ModelSerializer):
+    user_name = serializers.CharField(source='user.username', read_only=True)
+    user_email = serializers.CharField(source='user.email', read_only=True)
+
+    class Meta:
+        model = Attendance
+        fields = ('id', 'user', 'user_name', 'user_email', 'date', 'time_in', 'time_out', 'status', 'remarks', 'created_at', 'updated_at')
+        read_only_fields = ('id', 'created_at', 'updated_at')
+class TaskSerializer(serializers.ModelSerializer):
+    assigned_to_username = serializers.CharField(source='assigned_to.username', read_only=True)
+    assigned_to_name = serializers.SerializerMethodField(read_only=True)
+
+    class Meta:
+        model = Task
+        fields = ('id', 'title', 'description', 'status', 'priority', 'assigned_to', 'assigned_to_username', 'assigned_to_name', 'deadline', 'created_at', 'updated_at')
+        read_only_fields = ('id', 'created_at', 'updated_at')
+
+    def get_assigned_to_name(self, obj):
+        user = obj.assigned_to
+        if not user:
+            return None
+        full = f"{getattr(user, 'first_name', '') or ''} {getattr(user, 'last_name', '') or ''}".strip()
+        return full if full else getattr(user, 'username', None)
 class RegisterSerializer(serializers.ModelSerializer):
-    """Serializer for user registration"""
-    password = serializers.CharField(
-        write_only=True,
-        required=True,
-        validators=[validate_password],
-        style={'input_type': 'password'}
-    )
-    password_confirm = serializers.CharField(
-        write_only=True,
-        required=True,
-        style={'input_type': 'password'}
-    )
-    
+    password = serializers.CharField(write_only=True)
+
     class Meta:
         model = User
-        fields = ['email', 'username', 'first_name', 'last_name', 'password', 'password_confirm', 'user_type', 'phone']
-        extra_kwargs = {
-            'email': {'required': True},
-            'username': {'required': True},
-            'first_name': {'required': False},
-            'last_name': {'required': False},
-        }
-    
-    def validate(self, attrs):
-        """Validate passwords match"""
-        if attrs['password'] != attrs['password_confirm']:
-            raise serializers.ValidationError({
-                'password': 'Password fields must match.'
-            })
-        
-        # Check if email already exists
-        if User.objects.filter(email=attrs['email']).exists():
-            raise serializers.ValidationError({
-                'email': 'This email is already registered.'
-            })
-        
-        # Check if username already exists
-        if User.objects.filter(username=attrs['username']).exists():
-            raise serializers.ValidationError({
-                'username': 'This username is already taken.'
-            })
-        
-        return attrs
-    
+        fields = ('username', 'email', 'password', 'first_name', 'last_name', 'user_type')
+
     def create(self, validated_data):
-        """Create user with hashed password"""
-        validated_data.pop('password_confirm')
-        password = validated_data.pop('password')
-        
-        user = User.objects.create_user(
-            **validated_data,
-            password=password
-        )
+        user = User.objects.create_user(**validated_data)
         return user
 
 
 class LoginSerializer(serializers.Serializer):
-    """Serializer for user login with JWT - accepts `email` or `username`.
+    email = serializers.EmailField()
+    password = serializers.CharField(write_only=True)
 
-    This serializer validates credentials (email or username + password)
-    and returns JWT tokens plus a serialized user object.
-    """
-    email = serializers.CharField(required=False, allow_blank=True)
-    username = serializers.CharField(required=False, allow_blank=True)
-    user_type = serializers.CharField(required=False, allow_blank=True)
-    password = serializers.CharField(write_only=True, required=True, style={'input_type': 'password'})
+    def validate(self, data):
+        email = data.get('email')
+        password = data.get('password')
 
-    def validate(self, attrs):
-        username_or_email = attrs.get('email') or attrs.get('username')
-        password = attrs.get('password')
-
-        if not username_or_email or not password:
-            raise serializers.ValidationError('Both email/username and password are required.')
-
-        # Try to find user by email first, then username
-        user = None
         try:
-            user = User.objects.get(email=username_or_email)
+            user = User.objects.get(email=email)
         except User.DoesNotExist:
-            try:
-                user = User.objects.get(username=username_or_email)
-            except User.DoesNotExist:
-                raise serializers.ValidationError('Invalid email or username.')
+            raise serializers.ValidationError("Invalid credentials")
 
-        # Verify password
         if not user.check_password(password):
-            raise serializers.ValidationError('Invalid password.')
+            raise serializers.ValidationError("Invalid credentials")
 
-        if not user.is_active:
-            raise serializers.ValidationError('User account is disabled.')
-
-        # If a user_type was provided in the request, ensure it matches the user's type
-        requested_type = attrs.get('user_type')
-        if requested_type:
-            # Normalize case for comparison
-            if requested_type.lower() != (user.user_type or '').lower():
-                raise serializers.ValidationError('Selected role does not match this account.')
-
-        # Create tokens
-        refresh = RefreshToken.for_user(user)
-
-        return {
-            'refresh': str(refresh),
-            'access': str(refresh.access_token),
-            'user': {
-                'id': user.id,
-                'email': user.email,
-                'username': user.username,
-                'first_name': user.first_name,
-                'last_name': user.last_name,
-                'user_type': user.user_type,
-                'is_verified': user.is_verified,
-            }
-        }
-
-
-class ChangePasswordSerializer(serializers.Serializer):
-    """Serializer for changing user password"""
-    old_password = serializers.CharField(write_only=True, required=True, style={'input_type': 'password'})
-    new_password = serializers.CharField(
-        write_only=True,
-        required=True,
-        validators=[validate_password],
-        style={'input_type': 'password'}
-    )
-    new_password_confirm = serializers.CharField(write_only=True, required=True, style={'input_type': 'password'})
-    
-    def validate(self, attrs):
-        if attrs['new_password'] != attrs['new_password_confirm']:
-            raise serializers.ValidationError({
-                'new_password': 'Password fields must match.'
-            })
-        return attrs
-    
-    def validate_old_password(self, value):
-        """Validate old password"""
-        user = self.context['request'].user
-        if not user.check_password(value):
-            raise serializers.ValidationError('Old password is incorrect.')
-        return value
-    
-    def save(self):
-        """Update user password"""
-        user = self.context['request'].user
-        user.set_password(self.validated_data['new_password'])
-        user.save()
-        return user
-
-
-class UpdateProfileSerializer(serializers.ModelSerializer):
-    """Serializer for updating user profile"""
-    class Meta:
-        model = User
-        fields = ['first_name', 'last_name', 'phone', 'bio', 'profile_picture', 'user_type']
-    
-    def update(self, instance, validated_data):
-        for attr, value in validated_data.items():
-            setattr(instance, attr, value)
-        instance.save()
-        return instance
-
-
-class TaskSerializer(serializers.ModelSerializer):
-    """Serializer for Task model"""
-    user = serializers.PrimaryKeyRelatedField(queryset=User.objects.all(), required=False)
-    user_display = serializers.SerializerMethodField(read_only=True)
-
-    class Meta:
-        model = Task
-        fields = ['id', 'user', 'user_display', 'title', 'description', 'status', 'priority', 'deadline', 'created_at', 'updated_at']
-        read_only_fields = ['id', 'created_at', 'updated_at', 'user_display']
-
-    def get_user_display(self, obj):
-        try:
-            return {
-                'id': obj.user.id,
-                'email': getattr(obj.user, 'email', ''),
-                'username': getattr(obj.user, 'username', '')
-            }
-        except Exception:
-            return None
-
-
-class ExportFormatSerializer(serializers.Serializer):
-    """Serializer for export format selection"""
-    FORMAT_CHOICES = [
-        ('json', 'JSON'),
-        ('csv', 'CSV'),
-        ('xml', 'XML'),
-        ('pdf', 'PDF'),
-    ]
-    
-    format = serializers.ChoiceField(choices=FORMAT_CHOICES, required=True)
-    status = serializers.ChoiceField(
-        choices=['all', 'pending', 'in_progress', 'completed'],
-        required=False,
-        default='all'
-    )
-    priority = serializers.ChoiceField(
-        choices=['all', 'low', 'medium', 'high'],
-        required=False,
-        default='all'
-    )
+        data['user'] = user
+        return data

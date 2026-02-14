@@ -1,18 +1,13 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 
-// Production build will:
-// - Use /static/ as base URL
-// - Store JS & CSS inside /assets folder
-// - Output build inside Django static folder
-
 export default defineConfig({
-  base: '/static/',
+  base: '/',
   plugins: [react()],
   build: {
-    outDir: '../backend/static',   // Adjust to your Django static folder
+    outDir: '../backend/static',
     emptyOutDir: true,
-    assetsDir: 'assets',           // 👈 This creates /static/assets/
+    assetsDir: 'assets',
     rollupOptions: {
       output: {
         entryFileNames: 'assets/js/[name]-[hash].js',

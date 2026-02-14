@@ -1,0 +1,11 @@
+{
+	"version": "2.0.0",
+	"tasks": [
+		{
+			"label": "Recreate unified implementation",
+			"type": "shell",
+			"command": "echo 'Ready to recreate backend, staffbackend, adminbackend, and frontend'",
+			"isBackground": false
+		}
+	]
+}
