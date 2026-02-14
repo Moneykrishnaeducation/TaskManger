@@ -30,6 +30,8 @@ const Login = () => {
           navigate('/admin/dashboard');
         } else if (response.user.user_type === 'staff' || response.user.is_staff) {
           navigate('/staff/dashboard');
+        } else if (response.user.user_type === 'sales') {
+          navigate('/sales/dashboard');
         } else {
           navigate('/staff/dashboard');
         }
