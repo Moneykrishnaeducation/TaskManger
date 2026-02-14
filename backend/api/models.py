@@ -65,6 +65,7 @@ class Task(models.Model):
     priority = models.CharField(max_length=10, choices=PRIORITY_CHOICES, default='medium')
     assigned_to = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True)
     deadline = models.DateTimeField(null=True, blank=True)
+    completion_notes = models.TextField(blank=True, null=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -79,6 +80,7 @@ class Lead(models.Model):
     STATUS_CHOICES = (
         ('new', 'New'),
         ('contacted', 'Contacted'),
+        ('not_interested', 'Not Interested'),
         ('converted', 'Converted'),
     )
 
@@ -101,3 +103,51 @@ class Lead(models.Model):
 
     def __str__(self):
         return f"Lead {self.id} - {self.email or self.phone or self.name}"
+
+
+class AccountOpening(models.Model):
+    lead = models.ForeignKey(Lead, on_delete=models.CASCADE, related_name='account_openings')
+    created_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name='created_account_openings')
+    deposit_amount = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    notes = models.TextField(blank=True, null=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        app_label = 'api'
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f"AccountOpening {self.id} for Lead {self.lead_id} - {self.deposit_amount}"
+
+
+class PaymentProof(models.Model):
+    lead = models.ForeignKey(Lead, on_delete=models.CASCADE, related_name='payment_proofs')
+    uploaded_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name='uploaded_payment_proofs')
+    file = models.FileField(upload_to='indicator_proofs/')
+    notes = models.TextField(blank=True, null=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        app_label = 'api'
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f"PaymentProof {self.id} for Lead {self.lead_id}"
+
+
+class FollowUp(models.Model):
+    lead = models.ForeignKey(Lead, on_delete=models.CASCADE, related_name='followups')
+    scheduled_date = models.DateField()
+    notes = models.TextField(blank=True, null=True)
+    created_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name='created_followups')
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        app_label = 'api'
+        ordering = ['-scheduled_date', '-created_at']
+
+    def __str__(self):
+        return f"FollowUp {self.id} for Lead {self.lead_id} on {self.scheduled_date}"

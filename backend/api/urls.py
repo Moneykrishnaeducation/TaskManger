@@ -2,7 +2,7 @@ from django.urls import path, include
 from rest_framework.routers import DefaultRouter
 from rest_framework_simplejwt.views import TokenRefreshView
 from .views import LoginView, RegisterView, UserViewSet, AttendanceViewSet, AdminTaskViewSet, StaffTaskViewSet, FetchMetaLeadsView, UploadLeadsCSVView
-from .views import LeadsListView
+from .views import LeadsListView, AccountOpeningCreateView, LeadSetStatusView, LeadIndicatorUploadView, FollowUpCreateView, FollowUpListView
 
 router = DefaultRouter()
 router.register(r'users', UserViewSet)
@@ -17,5 +17,10 @@ urlpatterns = [
     path('fetch_meta_leads/', FetchMetaLeadsView.as_view(), name='fetch_meta_leads'),
     path('upload_leads_csv/', UploadLeadsCSVView.as_view(), name='upload_leads_csv'),
     path('leads/', LeadsListView.as_view(), name='leads_list'),
+    path('leads/<int:pk>/set_status/', LeadSetStatusView.as_view(), name='lead_set_status'),
+    path('leads/<int:pk>/indicator_upload/', LeadIndicatorUploadView.as_view(), name='lead_indicator_upload'),
+    path('leads/<int:pk>/followups/', FollowUpCreateView.as_view(), name='lead_followups_create'),
+    path('followups/', FollowUpListView.as_view(), name='followups_list'),
+    path('account_openings/', AccountOpeningCreateView.as_view(), name='account_openings'),
     path('', include(router.urls)),
 ]

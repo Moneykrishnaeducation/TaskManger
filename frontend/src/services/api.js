@@ -244,6 +244,37 @@ export const getLeads = async () => {
   return response.data;
 };
 
+export const setLeadStatus = async (leadId, status) => {
+  const response = await authApi.post(`/leads/${leadId}/set_status/`, { status });
+  return response.data;
+};
+
+export const uploadIndicatorProof = async (leadId, file, notes = '') => {
+  const form = new FormData();
+  form.append('file', file);
+  if (notes) form.append('notes', notes);
+  const response = await authApi.post(`/leads/${leadId}/indicator_upload/`, form, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+    timeout: 120000,
+  });
+  return response.data;
+};
+
+export const createFollowUp = async (leadId, scheduledDate, notes = '') => {
+  const response = await authApi.post(`/leads/${leadId}/followups/`, { scheduled_date: scheduledDate, notes });
+  return response.data;
+};
+
+export const getFollowUps = async () => {
+  const response = await authApi.get('/followups/');
+  return response.data;
+};
+
+export const createAccountOpening = async (leadId, depositAmount, notes = '') => {
+  const response = await authApi.post('/account_openings/', { lead: leadId, deposit_amount: depositAmount, notes });
+  return response.data;
+};
+
 // STAFF APIs
 export const getStaffTasks = async () => {
   const response = await staffApi.get('/staff/tasks/');
@@ -255,8 +286,11 @@ export const getStaffTaskById = async (id) => {
   return response.data;
 };
 
-export const updateStaffTaskStatus = async (id, status) => {
-  const response = await staffApi.patch(`/staff/tasks/${id}/update_status/`, { status });
+export const updateStaffTaskStatus = async (id, status, completionNotes = '') => {
+  const response = await staffApi.patch(`/staff/tasks/${id}/update_status/`, { 
+    status,
+    completion_notes: completionNotes
+  });
   return response.data;
 };
 

@@ -3,6 +3,9 @@ from rest_framework_simplejwt.tokens import RefreshToken
 from .models import User, Attendance
 from .models import Task
 from .models import Lead
+from .models import AccountOpening
+from .models import PaymentProof
+from .models import FollowUp
 
 
 class UserSerializer(serializers.ModelSerializer):
@@ -31,7 +34,7 @@ class TaskSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Task
-        fields = ('id', 'title', 'description', 'status', 'priority', 'assigned_to', 'assigned_to_username', 'assigned_to_name', 'deadline', 'created_at', 'updated_at')
+        fields = ('id', 'title', 'description', 'status', 'priority', 'assigned_to', 'assigned_to_username', 'assigned_to_name', 'deadline', 'completion_notes', 'created_at', 'updated_at')
         read_only_fields = ('id', 'created_at', 'updated_at')
 
     def get_assigned_to_name(self, obj):
@@ -79,3 +82,54 @@ class LeadSerializer(serializers.ModelSerializer):
         model = Lead
         fields = ('id', 'name', 'email', 'phone', 'city', 'source', 'status', 'assigned_to', 'assigned_to_username', 'external_id', 'form_id', 'raw_data', 'created_at', 'updated_at')
         read_only_fields = ('id', 'created_at', 'updated_at')
+
+
+class AccountOpeningSerializer(serializers.ModelSerializer):
+    lead_info = serializers.SerializerMethodField(read_only=True)
+    created_by_username = serializers.CharField(source='created_by.username', read_only=True)
+
+    class Meta:
+        model = AccountOpening
+        fields = ('id', 'lead', 'lead_info', 'created_by', 'created_by_username', 'deposit_amount', 'notes', 'created_at', 'updated_at')
+        read_only_fields = ('id', 'created_at', 'updated_at')
+
+    def get_lead_info(self, obj):
+        lead = obj.lead
+        return {
+            'id': lead.id,
+            'name': lead.name,
+            'email': lead.email,
+            'phone': lead.phone,
+            'city': lead.city,
+            'status': lead.status,
+        }
+
+
+class PaymentProofSerializer(serializers.ModelSerializer):
+    uploaded_by_username = serializers.CharField(source='uploaded_by.username', read_only=True)
+
+    class Meta:
+        model = PaymentProof
+        fields = ('id', 'lead', 'uploaded_by', 'uploaded_by_username', 'file', 'notes', 'created_at', 'updated_at')
+        read_only_fields = ('id', 'created_at', 'updated_at')
+
+
+class FollowUpSerializer(serializers.ModelSerializer):
+    lead_info = serializers.SerializerMethodField(read_only=True)
+    created_by_username = serializers.CharField(source='created_by.username', read_only=True)
+
+    class Meta:
+        model = FollowUp
+        fields = ('id', 'lead', 'lead_info', 'scheduled_date', 'notes', 'created_by', 'created_by_username', 'created_at', 'updated_at')
+        read_only_fields = ('id', 'created_at', 'updated_at')
+
+    def get_lead_info(self, obj):
+        lead = obj.lead
+        return {
+            'id': lead.id,
+            'name': lead.name,
+            'email': lead.email,
+            'phone': lead.phone,
+            'city': lead.city,
+            'status': lead.status,
+        }

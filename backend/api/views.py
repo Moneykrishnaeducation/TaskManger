@@ -15,8 +15,10 @@ import logging
 from .models import User, Attendance, Task
 from .serializers import UserSerializer, RegisterSerializer, LoginSerializer, AttendanceSerializer, TaskSerializer
 from rest_framework import permissions
-from .models import Lead
-from .serializers import LeadSerializer
+from .models import Lead, AccountOpening, PaymentProof, FollowUp
+from .serializers import LeadSerializer, AccountOpeningSerializer, PaymentProofSerializer
+from .serializers import FollowUpSerializer
+from rest_framework.parsers import MultiPartParser, FormParser
 from rest_framework.views import APIView
 from rest_framework.parsers import MultiPartParser, FormParser
 import csv
@@ -338,11 +340,14 @@ class StaffTaskViewSet(viewsets.ModelViewSet):
     def update_status(self, request, pk=None):
         task = self.get_object()
         status_value = request.data.get('status')
+        completion_notes = request.data.get('completion_notes', '')
 
         if status_value not in dict(Task.STATUS_CHOICES):
             return Response({'error': 'Invalid status'}, status=status.HTTP_400_BAD_REQUEST)
 
         task.status = status_value
+        if completion_notes:
+            task.completion_notes = completion_notes
         task.save()
         return Response(TaskSerializer(task).data)
 
@@ -616,3 +621,136 @@ class LeadsListView(APIView):
         except Exception as e:
             logging.exception('Error listing leads')
             return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+class LeadSetStatusView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, pk=None):
+        status_value = request.data.get('status')
+        if not status_value:
+            return Response({'error': 'status is required'}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            lead = Lead.objects.get(id=pk)
+        except Lead.DoesNotExist:
+            return Response({'error': 'Lead not found'}, status=status.HTTP_404_NOT_FOUND)
+
+        # validate status choice
+        valid = [c[0] for c in Lead.STATUS_CHOICES]
+        if status_value not in valid:
+            return Response({'error': 'Invalid status'}, status=status.HTTP_400_BAD_REQUEST)
+
+        lead.status = status_value
+        lead.save()
+        return Response(LeadSerializer(lead).data, status=status.HTTP_200_OK)
+
+
+class LeadIndicatorUploadView(APIView):
+    permission_classes = [IsAuthenticated]
+    parser_classes = [MultiPartParser, FormParser]
+
+    def post(self, request, pk=None):
+        # expects multipart form with file and optional notes
+        try:
+            lead = Lead.objects.get(id=pk)
+        except Lead.DoesNotExist:
+            return Response({'error': 'Lead not found'}, status=status.HTTP_404_NOT_FOUND)
+
+        file_obj = request.FILES.get('file') or request.FILES.get('proof')
+        notes = request.data.get('notes') or ''
+
+        if not file_obj:
+            return Response({'error': 'file is required'}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            obj = PaymentProof.objects.create(
+                lead=lead,
+                uploaded_by=request.user if request.user.is_authenticated else None,
+                file=file_obj,
+                notes=notes
+            )
+            return Response(PaymentProofSerializer(obj).data, status=status.HTTP_201_CREATED)
+        except Exception as e:
+            logging.exception('Error saving payment proof')
+            return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
+
+class FollowUpCreateView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, pk=None):
+        # create a follow up for a lead (pk)
+        lead_id = pk or request.data.get('lead')
+        scheduled_date = request.data.get('scheduled_date')
+        notes = request.data.get('notes') or ''
+
+        if not lead_id or not scheduled_date:
+            return Response({'error': 'lead and scheduled_date are required'}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            lead = Lead.objects.get(id=lead_id)
+        except Lead.DoesNotExist:
+            return Response({'error': 'Lead not found'}, status=status.HTTP_404_NOT_FOUND)
+
+        try:
+            data = {
+                'lead': lead.id,
+                'scheduled_date': scheduled_date,
+                'notes': notes,
+                'created_by': request.user.id if request.user.is_authenticated else None,
+            }
+            serializer = FollowUpSerializer(data=data)
+            serializer.is_valid(raise_exception=True)
+            obj = serializer.save()
+            return Response(FollowUpSerializer(obj).data, status=status.HTTP_201_CREATED)
+        except Exception as e:
+            logging.exception('Error creating followup')
+            return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
+
+class FollowUpListView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        try:
+            qs = FollowUp.objects.all().order_by('-scheduled_date')
+            serializer = FollowUpSerializer(qs, many=True)
+            return Response(serializer.data, status=status.HTTP_200_OK)
+        except Exception as e:
+            logging.exception('Error listing followups')
+            return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+class AccountOpeningCreateView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        user = request.user
+        lead_id = request.data.get('lead') or request.data.get('lead_id')
+        deposit = request.data.get('deposit_amount') or request.data.get('deposit') or 0
+        notes = request.data.get('notes') or ''
+
+        if not lead_id:
+            return Response({'error': 'lead (id) is required'}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            lead = Lead.objects.get(id=lead_id)
+        except Lead.DoesNotExist:
+            return Response({'error': 'Lead not found'}, status=status.HTTP_404_NOT_FOUND)
+
+        try:
+            # normalize deposit to Decimal via serializer
+            data = {
+                'lead': lead.id,
+                'created_by': user.id if user and user.is_authenticated else None,
+                'deposit_amount': deposit,
+                'notes': notes,
+            }
+            serializer = AccountOpeningSerializer(data=data)
+            serializer.is_valid(raise_exception=True)
+            obj = serializer.save()
+            return Response(AccountOpeningSerializer(obj).data, status=status.HTTP_201_CREATED)
+        except Exception as e:
+            logging.exception('Error creating account opening')
+            return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)

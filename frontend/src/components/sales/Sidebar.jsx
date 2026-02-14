@@ -9,6 +9,8 @@ const Sidebar = () => {
   const menuItems = [
     { path: '/sales/dashboard', label: 'Dashboard', icon: BarChart3 },
     { path: '/sales/leads', label: 'Lead', icon: BarChart3 },
+    { path: '/sales/follow-ups', label: 'Follow Ups', icon: ClipboardList },
+    { path: '/sales/not-interested', label: 'Not Interested', icon: ClipboardList },
     { path: '/sales/account-opening', label: 'Account Opening', icon: ClipboardList },
     { path: '/sales/status-update', label: 'Status Update', icon: ClipboardList },
     { path: '/sales/attendance', label: 'Attendance', icon: Calendar },

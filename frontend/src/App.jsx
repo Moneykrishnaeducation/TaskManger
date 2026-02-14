@@ -26,9 +26,11 @@ import SalesLayout from './components/sales/SalesLayout';
 import SalesDashboard from './pages/sales/Dashboard';
 import SalesLeads from './pages/sales/Leads';
 import AccountOpening from './pages/sales/AccountOpening';
+import NotInterested from './pages/sales/NotInterested';
 import StatusUpdate from './pages/sales/StatusUpdate';
 import SalesAttendance from './pages/sales/Attendance';
 import SalesProfile from './pages/sales/ViewProfile';
+import FollowUps from './pages/sales/FollowUps';
 
 function App() {
   const [initialized, setInitialized] = useState(false);
@@ -80,6 +82,8 @@ function App() {
         <Route element={<SalesPrivateRoute><SalesLayout /></SalesPrivateRoute>}>
           <Route path="/sales/dashboard" element={<SalesDashboard />} />
           <Route path="/sales/leads" element={<SalesLeads />} />
+          <Route path="/sales/follow-ups" element={<FollowUps />} />
+          <Route path="/sales/not-interested" element={<NotInterested />} />
           <Route path="/sales/account-opening" element={<AccountOpening />} />
           <Route path="/sales/status-update" element={<StatusUpdate />} />
           <Route path="/sales/attendance" element={<SalesAttendance />} />

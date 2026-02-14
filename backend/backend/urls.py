@@ -14,6 +14,7 @@ urlpatterns = [
 urlpatterns += [
     re_path(r'^assets/(?P<path>.*)$', serve, {'document_root': os.path.join(settings.STATIC_ROOT, 'assets')}),
     re_path(r'^static/(?P<path>.*)$', serve, {'document_root': settings.STATIC_ROOT}),
+    re_path(r'^media/(?P<path>.*)$', serve, {'document_root': settings.MEDIA_ROOT}),
 ]
 
 # Catchall for SPA - must be last. Exclude API and static/asset paths to avoid returning
