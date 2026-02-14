@@ -1,11 +1,14 @@
 import { useEffect, useState } from 'react';
 import { CheckSquare, Clock, AlertCircle } from 'lucide-react';
 import { getStaffStats, getStaffTasks } from '../../services/api';
+import { useNavigate } from 'react-router-dom';
 
 const StaffDashboard = () => {
   const [stats, setStats] = useState(null);
   const [tasks, setTasks] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [filterStatus, setFilterStatus] = useState('Pending');
+  const navigate = useNavigate();
 
   useEffect(() => {
     fetchStatsAndTasks();
@@ -78,6 +81,8 @@ const StaffDashboard = () => {
         <StatCard icon={Clock} label="In Progress" value={stats.inProgressTasks} color="bg-yellow-500" />
         <StatCard icon={CheckSquare} label="Completed" value={stats.completedTasks} color="bg-green-500" />
       </div>
+      
+
 
       {/* My Tasks Table */}
       <div className="bg-white rounded-xl shadow-md mt-8">
@@ -97,12 +102,27 @@ const StaffDashboard = () => {
               </tr>
             </thead>
             <tbody className="bg-white divide-y divide-gray-100">
-              {tasks.length === 0 ? (
-                <tr>
-                  <td colSpan="5" className="text-center py-8 text-gray-400">No tasks found</td>
-                </tr>
-              ) : (
-                tasks.map((task) => (
+              {(() => {
+                const filteredTasks = tasks.filter(task => {
+                  if (filterStatus === 'Pending') {
+                    return task.status === 'Pending' || task.status === 'pending';
+                  }
+                  if (filterStatus === 'In Progress') {
+                    return task.status === 'In Progress' || task.status === 'in_progress';
+                  }
+                  if (filterStatus === 'Completed') {
+                    return task.status === 'Completed' || task.status === 'completed';
+                  }
+                  return true;
+                });
+                if (filteredTasks.length === 0) {
+                  return (
+                    <tr>
+                      <td colSpan="6" className="text-center py-8 text-gray-400">No tasks found</td>
+                    </tr>
+                  );
+                }
+                return filteredTasks.map((task) => (
                   <tr key={task.id} className="hover:bg-gray-50">
                     <td className="px-6 py-4 whitespace-nowrap text-gray-900">{task.title || task.name}</td>
                     {/* <td className="px-6 py-4 whitespace-nowrap">
@@ -114,9 +134,9 @@ const StaffDashboard = () => {
                         {task.priority}
                       </span>
                     </td> */}
-                     <td className="px-6 py-4 max-w-xs text-sm text-gray-600">
-                    <div className="line-clamp-2">{task.description}</div>
-                  </td>
+                    <td className="px-6 py-4 max-w-xs text-sm text-gray-600">
+                      <div className="line-clamp-2">{task.description}</div>
+                    </td>
                     <td className="px-6 py-4 whitespace-nowrap">
                       <span className={`px-3 py-1 rounded-full text-xs font-semibold 
                         ${task.status === 'Pending' || task.status === 'pending' ? 'bg-red-500 text-white' : ''}
@@ -127,9 +147,8 @@ const StaffDashboard = () => {
                       </span>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                    {task.deadline ? new Date(task.deadline).toLocaleString() : '—'}
-                  </td>
-
+                      {task.deadline ? new Date(task.deadline).toLocaleString() : '—'}
+                    </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                       {(task.status === 'Completed' || task.status === 'completed')
                         ? (task.completed_at
@@ -138,11 +157,16 @@ const StaffDashboard = () => {
                         : '—'}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
-                      <button className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-1 rounded-lg font-medium text-sm transition">View</button>
+                      <button
+                        className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-1 rounded-lg font-medium text-sm transition"
+                        onClick={() => navigate(`/staff/tasks/`)}
+                      >
+                        View
+                      </button>
                     </td>
                   </tr>
-                ))
-              )}
+                ));
+              })()}
             </tbody>
           </table>
         </div>
