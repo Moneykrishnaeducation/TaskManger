@@ -7,21 +7,47 @@ const AdminManageTasks = () => {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    fetchTasks();
-    // fetch users for assignment
+    const team = localStorage.getItem('adminTeam') || 'staff';
+    fetchTasks(team);
+    // fetch users for assignment and filter by team
     (async () => {
       try {
         const u = await getUsers();
-        setUsers(Array.isArray(u) ? u : []);
+        const list = Array.isArray(u) ? u : [];
+        const filtered = list.filter(user => {
+          if (team === 'sales') return user.user_type === 'sales';
+          return user.user_type === 'staff' || user.is_staff;
+        });
+        setUsers(filtered);
       } catch (err) {
         console.error('Failed to fetch users', err);
       }
     })();
+
+    const handler = (e) => {
+      const newTeam = (e && e.detail && e.detail.team) || localStorage.getItem('adminTeam') || 'staff';
+      fetchTasks(newTeam);
+      (async () => {
+        try {
+          const u = await getUsers();
+          const list = Array.isArray(u) ? u : [];
+          const filtered = list.filter(user => {
+            if (newTeam === 'sales') return user.user_type === 'sales';
+            return user.user_type === 'staff' || user.is_staff;
+          });
+          setUsers(filtered);
+        } catch (err) {
+          console.error('Failed to fetch users', err);
+        }
+      })();
+    };
+    window.addEventListener('adminTeamChanged', handler);
+    return () => window.removeEventListener('adminTeamChanged', handler);
   }, []);
 
-  const fetchTasks = async () => {
+  const fetchTasks = async (team) => {
     try {
-      const data = await getAdminTasks();
+      const data = await getAdminTasks(team);
       setTasks(Array.isArray(data) ? data : []);
     } catch (error) {
       console.error('Failed to fetch tasks:', error);

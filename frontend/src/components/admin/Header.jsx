@@ -1,15 +1,42 @@
 import { useNavigate } from 'react-router-dom';
 import { LogOut, User, ChevronDown } from 'lucide-react';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+
+const TEAMS = [
+  { key: 'staff', label: 'IT' },
+  { key: 'sales', label: 'Sales' },
+];
 
 const Header = () => {
   const navigate = useNavigate();
   const [showMenu, setShowMenu] = useState(false);
+  const [selectedTeam, setSelectedTeam] = useState(localStorage.getItem('adminTeam') || 'staff');
   const user = JSON.parse(localStorage.getItem('user') || '{}');
+
+  useEffect(() => {
+    // keep local state in sync if changed elsewhere
+    const handler = (e) => setSelectedTeam(localStorage.getItem('adminTeam') || 'staff');
+    window.addEventListener('storage', handler);
+    return () => window.removeEventListener('storage', handler);
+  }, []);
 
   const handleLogout = () => {
     localStorage.clear();
     navigate('/login');
+  };
+
+  const handleTeamToggle = (team) => {
+    if (team === selectedTeam) return;
+    setSelectedTeam(team);
+    localStorage.setItem('adminTeam', team);
+    // notify other components to refresh
+    try {
+      window.dispatchEvent(new CustomEvent('adminTeamChanged', { detail: { team } }));
+    } catch (e) {
+      const ev = document.createEvent('Event');
+      ev.initEvent('adminTeamChanged', true, true);
+      window.dispatchEvent(ev);
+    }
   };
 
   return (
@@ -20,6 +47,18 @@ const Header = () => {
         </div>
 
         <div className="flex items-center space-x-4">
+          <div className="flex items-center gap-2 mr-4">
+            {TEAMS.map(t => (
+              <button
+                key={t.key}
+                onClick={() => handleTeamToggle(t.key)}
+                className={`px-3 py-1 rounded ${selectedTeam === t.key ? 'bg-blue-600 text-white' : 'bg-white border'}`}
+              >
+                {t.label}
+              </button>
+            ))}
+          </div>
+
           <div className="relative">
             <button
               onClick={() => setShowMenu(!showMenu)}

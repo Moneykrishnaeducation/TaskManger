@@ -12,6 +12,12 @@ const ManageAttendance = () => {
 
   useEffect(() => {
     fetchData();
+    const handler = (e) => {
+      const newTeam = (e && e.detail && e.detail.team) || localStorage.getItem('adminTeam') || 'staff';
+      fetchData(newTeam);
+    };
+    window.addEventListener('adminTeamChanged', handler);
+    return () => window.removeEventListener('adminTeamChanged', handler);
   }, []);
 
   const fetchData = async () => {
@@ -23,9 +29,19 @@ const ManageAttendance = () => {
         getAllAttendanceRecords(),
         getUsers(),
       ]);
-      
-      setAttendanceRecords(records);
-      setUsers(userList);
+
+      const list = Array.isArray(userList) ? userList : [];
+      const team = localStorage.getItem('adminTeam') || 'staff';
+      const filteredUsers = list.filter(u => {
+        if (team === 'sales') return u.user_type === 'sales';
+        return u.user_type === 'staff' || u.is_staff;
+      });
+
+      const filteredUserIds = new Set(filteredUsers.map(u => u.id));
+      const filteredRecords = (Array.isArray(records) ? records : []).filter(r => filteredUserIds.has(r.user));
+
+      setAttendanceRecords(filteredRecords);
+      setUsers(filteredUsers);
     } catch (err) {
       setError('Failed to fetch attendance data');
       console.error(err);

@@ -114,9 +114,28 @@ export const getAllAttendanceRecords = async () => {
 };
 
 // ADMIN APIs
-export const getAdminTasks = async () => {
+export const getAdminTasks = async (team) => {
+  // If a team is provided, fetch tasks then filter by users belonging to that team
   const response = await adminApi.get('/tasks/');
-  return response.data.results || response.data;
+  const allTasks = response.data.results || response.data;
+
+  if (!team) return allTasks;
+
+  // fetch users and filter by team
+  try {
+    const users = await getUsers();
+    const list = Array.isArray(users) ? users : [];
+    const filteredUsers = list.filter(u => {
+      if (team === 'sales') return u.user_type === 'sales';
+      return u.user_type === 'staff' || u.is_staff;
+    });
+    const allowed = new Set(filteredUsers.map(u => u.id));
+    const filteredTasks = (Array.isArray(allTasks) ? allTasks : []).filter(t => allowed.has(t.assigned_to));
+    return filteredTasks;
+  } catch (err) {
+    console.error('Failed to filter tasks by team:', err);
+    return allTasks;
+  }
 };
 
 export const getAdminTaskById = async (id) => {
@@ -161,15 +180,27 @@ export const deleteAdminUser = async (id) => {
 
 export const getAdminStats = async () => {
   try {
-    const tasks = await getAdminTasks();
+    // accept optional team parameter
+    const team = arguments[0];
+    const tasks = await getAdminTasks(team);
     const users = await getAdminUsers();
+
+    // Filter users client-side based on team selection
+    const filteredUsers = Array.isArray(users)
+      ? users.filter(u => {
+          if (team === 'sales') return u.user_type === 'sales';
+          // 'staff' team represents IT
+          if (team === 'staff') return u.user_type === 'staff' || u.is_staff;
+          return true;
+        })
+      : [];
 
     const completedTasks = tasks.filter(t => t.status === 'completed').length;
     const pendingTasks = tasks.filter(t => t.status === 'pending').length;
     const inProgressTasks = tasks.filter(t => t.status === 'in_progress').length;
 
     return {
-      totalUsers: users.length || 0,
+      totalUsers: filteredUsers.length || 0,
       totalTasks: tasks.length || 0,
       completedTasks,
       pendingTasks,

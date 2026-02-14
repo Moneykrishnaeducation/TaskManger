@@ -7,13 +7,27 @@ const AdminManageUsers = () => {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    fetchUsers();
+    const team = localStorage.getItem('adminTeam') || 'staff';
+    fetchUsers(team);
+
+    const handler = (e) => {
+      const newTeam = (e && e.detail && e.detail.team) || localStorage.getItem('adminTeam') || 'staff';
+      fetchUsers(newTeam);
+    };
+    window.addEventListener('adminTeamChanged', handler);
+    return () => window.removeEventListener('adminTeamChanged', handler);
   }, []);
 
   const fetchUsers = async () => {
     try {
       const data = await getAdminUsers();
-      setUsers(Array.isArray(data) ? data : []);
+      const list = Array.isArray(data) ? data : [];
+      const team = localStorage.getItem('adminTeam') || 'staff';
+      const filtered = list.filter(u => {
+        if (team === 'sales') return u.user_type === 'sales';
+        return u.user_type === 'staff' || u.is_staff;
+      });
+      setUsers(filtered);
     } catch (error) {
       console.error('Failed to fetch users:', error);
     } finally {
@@ -83,6 +97,7 @@ const AdminManageUsers = () => {
                       className="px-2 py-1 border border-gray-300 rounded text-sm"
                     >
                       <option value="user">User</option>
+                      <option value="sales">Sales</option>
                       <option value="staff">Staff</option>
                       <option value="admin">Admin</option>
                     </select>

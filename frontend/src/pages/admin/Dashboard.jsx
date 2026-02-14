@@ -5,14 +5,23 @@ import { getAdminStats } from '../../services/api';
 const AdminDashboard = () => {
   const [stats, setStats] = useState(null);
   const [loading, setLoading] = useState(true);
+  
 
   useEffect(() => {
-    fetchStats();
+    const team = localStorage.getItem('adminTeam') || 'staff';
+    fetchStats(team);
+
+    const handler = (e) => {
+      const newTeam = (e && e.detail && e.detail.team) || localStorage.getItem('adminTeam') || 'staff';
+      fetchStats(newTeam);
+    };
+    window.addEventListener('adminTeamChanged', handler);
+    return () => window.removeEventListener('adminTeamChanged', handler);
   }, []);
 
-  const fetchStats = async () => {
+  const fetchStats = async (team) => {
     try {
-      const data = await getAdminStats();
+      const data = await getAdminStats(team);
       setStats(data);
     } catch (error) {
       console.error('Failed to fetch stats:', error);
@@ -20,6 +29,8 @@ const AdminDashboard = () => {
       setLoading(false);
     }
   };
+
+  
 
   const StatCard = ({ icon: Icon, label, value, color }) => (
     <div className="bg-white rounded-lg shadow-md p-6 flex items-center space-x-4">
@@ -50,10 +61,15 @@ const AdminDashboard = () => {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-3xl font-bold text-gray-900">Dashboard</h1>
-        <p className="text-gray-600 mt-2">Welcome to the admin dashboard</p>
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-3xl font-bold text-gray-900">Dashboard</h1>
+          <p className="text-gray-600 mt-2">Welcome to the admin dashboard</p>
+        </div>
+
+        <div />
       </div>
+      
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
         <StatCard icon={Users} label="Total Users" value={stats.totalUsers} color="bg-blue-500" />
