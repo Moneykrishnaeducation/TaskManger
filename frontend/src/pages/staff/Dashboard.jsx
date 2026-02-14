@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react';
-import { CheckSquare, Clock, AlertCircle } from 'lucide-react';
+import { CheckSquare, Clock, AlertCircle, ListChecks, Hourglass, Loader, BadgeCheck } from 'lucide-react';
 import { getStaffStats, getStaffTasks } from '../../services/api';
 import { useNavigate } from 'react-router-dom';
+import { PieChart, Pie, Cell, Legend, Tooltip, ResponsiveContainer } from 'recharts';
 
 const StaffDashboard = () => {
   const [stats, setStats] = useState(null);
@@ -76,10 +77,22 @@ const StaffDashboard = () => {
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-        <StatCard icon={CheckSquare} label="Total Tasks" value={stats.totalTasks} color="bg-purple-500" />
-        <StatCard icon={AlertCircle} label="Pending Tasks" value={stats.pendingTasks} color="bg-red-500" />
-        <StatCard icon={Clock} label="In Progress" value={stats.inProgressTasks} color="bg-yellow-500" />
-        <StatCard icon={CheckSquare} label="Completed" value={stats.completedTasks} color="bg-green-500" />
+        <StatCard icon={ListChecks} label="Total Tasks" value={stats.totalTasks} color="bg-purple-500" />
+        <StatCard icon={Hourglass} label="Pending Tasks" value={stats.pendingTasks} color="bg-red-500" />
+        <StatCard icon={Loader} label="In Progress" value={stats.inProgressTasks} color="bg-yellow-500" />
+        <StatCard icon={BadgeCheck} label="Completed" value={stats.completedTasks} color="bg-green-500" />
+        <StatCard 
+          icon={BadgeCheck} 
+          label="Check In" 
+          value={stats.checkIn ? new Date(stats.checkIn).toLocaleTimeString() : '—'} 
+          color="bg-blue-500" 
+        />
+        <StatCard 
+          icon={BadgeCheck} 
+          label="Check Out" 
+          value={stats.checkOut ? new Date(stats.checkOut).toLocaleTimeString() : '—'} 
+          color="bg-indigo-500" 
+        />
       </div>
       
 
@@ -171,6 +184,43 @@ const StaffDashboard = () => {
           </table>
         </div>
       </div>
+
+      {/* Monthly Tasks Pie Chart */}
+      {stats.totalTasks > 0 && (
+        <div className="bg-white rounded-xl shadow-md p-6">
+          <h2 className="text-xl font-semibold text-gray-900 mb-4">Monthly Task Status</h2>
+          <div className="h-80">
+            <ResponsiveContainer width="100%" height="100%">
+              <PieChart>
+                <Pie
+                  data={[
+                    { name: 'Pending', value: stats.pendingTasks, color: '#ef4444' },
+                    { name: 'In Progress', value: stats.inProgressTasks, color: '#eab308' },
+                    { name: 'Completed', value: stats.completedTasks, color: '#22c55e' }
+                  ].filter(item => item.value > 0)}
+                  cx="50%"
+                  cy="50%"
+                  innerRadius={60}
+                  outerRadius={100}
+                  paddingAngle={5}
+                  dataKey="value"
+                  label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
+                >
+                  {[
+                    { name: 'Pending', value: stats.pendingTasks, color: '#ef4444' },
+                    { name: 'In Progress', value: stats.inProgressTasks, color: '#eab308' },
+                    { name: 'Completed', value: stats.completedTasks, color: '#22c55e' }
+                  ].filter(item => item.value > 0).map((entry, index) => (
+                    <Cell key={`cell-${index}`} fill={entry.color} />
+                  ))}
+                </Pie>
+                <Tooltip />
+                <Legend />
+              </PieChart>
+            </ResponsiveContainer>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
