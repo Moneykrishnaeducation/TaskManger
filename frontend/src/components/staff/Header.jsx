@@ -25,10 +25,10 @@ const Header = () => {
               onClick={() => setShowMenu(!showMenu)}
               className="flex items-center space-x-2 text-gray-700 hover:text-gray-900"
             >
-              <div className="w-10 h-10 rounded-full bg-green-600 flex items-center justify-center text-white">
-                <User className="w-6 h-6" />
+              <div className="w-10 h-10 rounded-full bg-green-600 flex items-center justify-center text-white font-semibold">
+                {user.username ? user.username.charAt(0).toUpperCase() : 'U'}
               </div>
-              <span>{user.username}</span>
+              <span>{user.username || 'User'}</span>
               <ChevronDown className="w-4 h-4" />
             </button>
 
