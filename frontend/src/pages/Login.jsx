@@ -28,6 +28,8 @@ const Login = () => {
 
         if (response.user.user_type === 'admin' || response.user.is_superuser) {
           navigate('/admin/dashboard');
+        } else if (response.user.user_type === 'sales') {
+          navigate('/sales/dashboard');
         } else if (response.user.user_type === 'staff' || response.user.is_staff) {
           navigate('/staff/dashboard');
         } else {

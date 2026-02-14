@@ -113,6 +113,16 @@ export const getAllAttendanceRecords = async () => {
   return response.data.results || response.data;
 };
 
+export const getActiveUsers = async () => {
+  try {
+    const response = await adminApi.get('/attendance/active_users/');
+    return response.data;
+  } catch (error) {
+    console.error('Failed to fetch active users:', error);
+    return { sales: [], it: [], total_active: 0 };
+  }
+};
+
 // ADMIN APIs
 export const getAdminTasks = async (team) => {
   // If a team is provided, fetch tasks then filter by users belonging to that team
@@ -226,6 +236,11 @@ export const uploadLeadsCSV = async (file) => {
     headers: { 'Content-Type': 'multipart/form-data' },
     timeout: 120000,
   });
+  return response.data;
+};
+
+export const getLeads = async () => {
+  const response = await authApi.get('/leads/');
   return response.data;
 };
 

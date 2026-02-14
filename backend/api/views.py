@@ -90,9 +90,10 @@ class RegisterView(generics.CreateAPIView):
 
     def create(self, request, *args, **kwargs):
         serializer = self.get_serializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
-        user = serializer.save()
+        if not serializer.is_valid():
+            return Response({'success': False, 'errors': serializer.errors}, status=status.HTTP_400_BAD_REQUEST)
 
+        user = serializer.save()
         refresh = RefreshToken.for_user(user)
 
         return Response({
@@ -256,6 +257,51 @@ class AttendanceViewSet(viewsets.ModelViewSet):
                 'error': str(e)
             }, status=status.HTTP_400_BAD_REQUEST)
 
+    @action(detail=False, methods=['get'])
+    def active_users(self, request):
+        """Get active users (checked in today but not checked out) by user type"""
+        if not (request.user.is_superuser or request.user.user_type == 'admin'):
+            return Response({
+                'error': 'Permission denied'
+            }, status=status.HTTP_403_FORBIDDEN)
+
+        try:
+            today = timezone.now().date()
+            # Get users who have checked in today but not checked out
+            active_attendances = Attendance.objects.filter(
+                date=today,
+                time_in__isnull=False,
+                time_out__isnull=True
+            ).select_related('user')
+
+            sales_users = []
+            it_users = []
+
+            for attendance in active_attendances:
+                user_data = {
+                    'id': attendance.user.id,
+                    'username': attendance.user.username,
+                    'email': attendance.user.email,
+                    'user_type': attendance.user.user_type,
+                    'check_in_time': str(attendance.time_in),
+                    'duration': str(timezone.now().time())
+                }
+
+                if attendance.user.user_type == 'sales':
+                    sales_users.append(user_data)
+                else:  # staff or it
+                    it_users.append(user_data)
+
+            return Response({
+                'sales': sales_users,
+                'it': it_users,
+                'total_active': len(sales_users) + len(it_users)
+            }, status=status.HTTP_200_OK)
+        except Exception as e:
+            return Response({
+                'error': str(e)
+            }, status=status.HTTP_400_BAD_REQUEST)
+
 
 class AdminTaskViewSet(viewsets.ModelViewSet):
     """Admin Task endpoints exposed on main API for frontend compatibility"""
@@ -366,6 +412,12 @@ class FetchMetaLeadsView(APIView):
         skipped = 0
         errors = []
 
+        # prepare sales pool for optional assignment of fetched leads
+        sales_qs = User.objects.filter(user_type='sales', is_active=True)
+        sales_list = list(sales_qs)
+        sales_count = len(sales_list)
+        rr_index = 0
+
         for page_id in page_list:
             try:
                 forms_url = f"https://graph.facebook.com/v{api_version}/{page_id}/leadgen_forms?access_token={access_token}"
@@ -444,8 +496,13 @@ class FetchMetaLeadsView(APIView):
                             skipped += 1
                             continue
 
-                        # create lead record
+                        # create lead record and optionally assign to a sales user (round-robin)
                         try:
+                            assigned = None
+                            if sales_count > 0:
+                                assigned = sales_list[rr_index % sales_count]
+                                rr_index += 1
+
                             lead_obj = Lead.objects.create(
                                 name=lead_info.get('name'),
                                 email=lead_info.get('email'),
@@ -455,6 +512,7 @@ class FetchMetaLeadsView(APIView):
                                 external_id=external_id,
                                 form_id=form_id,
                                 raw_data=lead,
+                                assigned_to=assigned,
                                 created_at=created_time if created_time else timezone.now()
                             )
                             created += 1
@@ -494,10 +552,10 @@ class UploadLeadsCSVView(APIView):
         skipped = 0
         errors = []
 
-        # gather active staff for round-robin assignment
-        staff_qs = User.objects.filter(user_type='staff', is_active=True)
-        staff_list = list(staff_qs)
-        staff_count = len(staff_list)
+        # gather active sales users for round-robin assignment
+        sales_qs = User.objects.filter(user_type='sales', is_active=True)
+        sales_list = list(sales_qs)
+        sales_count = len(sales_list)
         rr_index = 0
 
         for i, row in enumerate(reader):
@@ -520,8 +578,8 @@ class UploadLeadsCSVView(APIView):
                     continue
 
                 assigned = None
-                if staff_count > 0:
-                    assigned = staff_list[rr_index % staff_count]
+                if sales_count > 0:
+                    assigned = sales_list[rr_index % sales_count]
                     rr_index += 1
 
                 lead = Lead.objects.create(
@@ -538,3 +596,23 @@ class UploadLeadsCSVView(APIView):
                 errors.append({'row': i+1, 'error': str(e)})
 
         return Response({'success': True, 'created': created, 'skipped': skipped, 'errors': errors}, status=status.HTTP_200_OK)
+
+
+class LeadsListView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        user = request.user
+        try:
+            if user.is_superuser or getattr(user, 'user_type', None) == 'admin' or user.is_staff:
+                qs = Lead.objects.all()
+            else:
+                # sales users see leads assigned to them
+                qs = Lead.objects.filter(assigned_to=user)
+
+            qs = qs.order_by('-created_at')
+            serializer = LeadSerializer(qs, many=True)
+            return Response(serializer.data, status=status.HTTP_200_OK)
+        except Exception as e:
+            logging.exception('Error listing leads')
+            return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
