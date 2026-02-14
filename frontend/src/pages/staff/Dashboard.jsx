@@ -1,14 +1,31 @@
 import { useEffect, useState } from 'react';
 import { CheckSquare, Clock, AlertCircle } from 'lucide-react';
-import { getStaffStats } from '../../services/api';
+import { getStaffStats, getStaffTasks } from '../../services/api';
 
 const StaffDashboard = () => {
   const [stats, setStats] = useState(null);
+  const [tasks, setTasks] = useState([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    fetchStats();
+    fetchStatsAndTasks();
   }, []);
+
+  const fetchStatsAndTasks = async () => {
+    setLoading(true);
+    try {
+      const [statsData, tasksData] = await Promise.all([
+        getStaffStats(),
+        getStaffTasks(),
+      ]);
+      setStats(statsData);
+      setTasks(tasksData);
+    } catch (error) {
+      console.error('Failed to fetch dashboard data:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const fetchStats = async () => {
     try {
@@ -60,6 +77,75 @@ const StaffDashboard = () => {
         <StatCard icon={AlertCircle} label="Pending Tasks" value={stats.pendingTasks} color="bg-red-500" />
         <StatCard icon={Clock} label="In Progress" value={stats.inProgressTasks} color="bg-yellow-500" />
         <StatCard icon={CheckSquare} label="Completed" value={stats.completedTasks} color="bg-green-500" />
+      </div>
+
+      {/* My Tasks Table */}
+      <div className="bg-white rounded-xl shadow-md mt-8">
+        <div className="px-6 pt-6 pb-2">
+          <h2 className="text-xl font-semibold text-gray-900 mb-2">My Tasks</h2>
+        </div>
+        <div className="overflow-x-auto">
+          <table className="min-w-full divide-y divide-gray-200">
+            <thead className="bg-gray-50">
+              <tr>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Task</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Description</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">DeadLine</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Finished</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Action</th>
+              </tr>
+            </thead>
+            <tbody className="bg-white divide-y divide-gray-100">
+              {tasks.length === 0 ? (
+                <tr>
+                  <td colSpan="5" className="text-center py-8 text-gray-400">No tasks found</td>
+                </tr>
+              ) : (
+                tasks.map((task) => (
+                  <tr key={task.id} className="hover:bg-gray-50">
+                    <td className="px-6 py-4 whitespace-nowrap text-gray-900">{task.title || task.name}</td>
+                    {/* <td className="px-6 py-4 whitespace-nowrap">
+                      <span className={`px-3 py-1 rounded-full text-xs font-semibold 
+                        ${task.priority === 'High' ? 'bg-red-500 text-white' : ''}
+                        ${task.priority === 'Medium' ? 'bg-yellow-400 text-white' : ''}
+                        ${task.priority === 'Low' ? 'bg-green-500 text-white' : ''}
+                      `}>
+                        {task.priority}
+                      </span>
+                    </td> */}
+                     <td className="px-6 py-4 max-w-xs text-sm text-gray-600">
+                    <div className="line-clamp-2">{task.description}</div>
+                  </td>
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <span className={`px-3 py-1 rounded-full text-xs font-semibold 
+                        ${task.status === 'Pending' || task.status === 'pending' ? 'bg-red-500 text-white' : ''}
+                        ${task.status === 'In Progress' || task.status === 'in_progress' ? 'bg-yellow-400 text-white' : ''}
+                        ${task.status === 'Completed' || task.status === 'completed' ? 'bg-green-500 text-white' : ''}
+                      `}>
+                        {task.status === 'in_progress' ? 'In Progress' : task.status.charAt(0).toUpperCase() + task.status.slice(1)}
+                      </span>
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                    {task.deadline ? new Date(task.deadline).toLocaleString() : '—'}
+                  </td>
+
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                      {(task.status === 'Completed' || task.status === 'completed')
+                        ? (task.completed_at
+                            ? new Date(task.completed_at).toLocaleString()
+                            : (task.deadline ? new Date(task.deadline).toLocaleString() : '—'))
+                        : '—'}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <button className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-1 rounded-lg font-medium text-sm transition">View</button>
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
       </div>
     </div>
   );
