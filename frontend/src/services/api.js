@@ -302,6 +302,7 @@ export const updateStaffTaskDetails = async (id, taskData) => {
 export const getStaffStats = async () => {
   try {
     const tasksResponse = await getStaffTasks();
+    const todayAttendance = await getTodayAttendance();
     
     const completed = tasksResponse.filter(t => t.status === 'completed').length;
     const pending = tasksResponse.filter(t => t.status === 'pending').length;
@@ -312,6 +313,8 @@ export const getStaffStats = async () => {
       completedTasks: completed,
       pendingTasks: pending,
       inProgressTasks: inProgress,
+      checkIn: todayAttendance?.date ? `${todayAttendance.date} ${todayAttendance?.time_in}` : null,
+      checkOut: todayAttendance?.date ? `${todayAttendance.date} ${todayAttendance?.time_out}` : null,
     };
   } catch (error) {
     console.error('Failed to fetch staff stats:', error);
@@ -320,6 +323,8 @@ export const getStaffStats = async () => {
       completedTasks: 0,
       pendingTasks: 0,
       inProgressTasks: 0,
+      checkIn: null,
+      checkOut: null,
     };
   }
 };

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { CheckSquare, Clock, AlertCircle, ListChecks, Hourglass, Loader, BadgeCheck } from 'lucide-react';
+import { CheckSquare, Clock, AlertCircle, ListChecks, Hourglass, Loader, BadgeCheck, LogIn, DoorOpen } from 'lucide-react';
 import { getStaffStats, getStaffTasks } from '../../services/api';
 import { useNavigate } from 'react-router-dom';
 import { PieChart, Pie, Cell, Legend, Tooltip, ResponsiveContainer } from 'recharts';
@@ -82,15 +82,15 @@ const StaffDashboard = () => {
         <StatCard icon={Loader} label="In Progress" value={stats.inProgressTasks} color="bg-yellow-500" />
         <StatCard icon={BadgeCheck} label="Completed" value={stats.completedTasks} color="bg-green-500" />
         <StatCard 
-          icon={BadgeCheck} 
+          icon={LogIn} 
           label="Check In" 
-          value={stats.checkIn ? new Date(stats.checkIn).toLocaleTimeString() : '—'} 
+          value={stats.checkIn ? new Date(stats.checkIn).toLocaleString() : '—'}
           color="bg-blue-500" 
         />
         <StatCard 
-          icon={BadgeCheck} 
+          icon={DoorOpen} 
           label="Check Out" 
-          value={stats.checkOut ? new Date(stats.checkOut).toLocaleTimeString() : '—'} 
+          value={stats.checkOut ? new Date(stats.checkOut).toLocaleString() : '—'} 
           color="bg-indigo-500" 
         />
       </div>
