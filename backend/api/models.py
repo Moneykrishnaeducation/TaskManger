@@ -73,3 +73,31 @@ class Task(models.Model):
 
     def __str__(self):
         return self.title
+
+
+class Lead(models.Model):
+    STATUS_CHOICES = (
+        ('new', 'New'),
+        ('contacted', 'Contacted'),
+        ('converted', 'Converted'),
+    )
+
+    name = models.CharField(max_length=255, blank=True, null=True)
+    email = models.EmailField(blank=True, null=True)
+    phone = models.CharField(max_length=50, blank=True, null=True)
+    city = models.CharField(max_length=200, blank=True, null=True)
+    source = models.CharField(max_length=100, blank=True, null=True)
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='new')
+    assigned_to = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name='leads')
+    external_id = models.CharField(max_length=200, blank=True, null=True, unique=True)
+    form_id = models.CharField(max_length=200, blank=True, null=True)
+    raw_data = models.JSONField(blank=True, null=True)
+    created_at = models.DateTimeField(default=timezone.now)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        app_label = 'api'
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f"Lead {self.id} - {self.email or self.phone or self.name}"
