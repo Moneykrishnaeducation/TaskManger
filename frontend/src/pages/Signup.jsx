@@ -10,7 +10,7 @@ const Signup = () => {
     password2: '',
     first_name: '',
     last_name: '',
-    user_type: 'staff',
+    user_type: 'IT',
   });
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
@@ -37,13 +37,16 @@ const Signup = () => {
     }
 
     try {
+      // Map friendly options to backend user_type values
+      const payloadUserType = formData.user_type === 'IT' ? 'staff' : formData.user_type.toLowerCase();
+
       const response = await registerUser({
         username: formData.username,
         email: formData.email,
         password: formData.password,
         first_name: formData.first_name,
         last_name: formData.last_name,
-        user_type: formData.user_type,
+        user_type: payloadUserType,
       });
 
       if (response.success) {
@@ -55,7 +58,10 @@ const Signup = () => {
         if (response.user.user_type === 'admin' || response.user.is_superuser) {
           navigate('/admin/dashboard');
         } else if (response.user.user_type === 'staff' || response.user.is_staff) {
+          // IT users are registered as 'staff' on the backend
           navigate('/staff/dashboard');
+        } else if (response.user.user_type === 'sales') {
+          navigate('/sales/dashboard');
         } else {
           navigate('/login');
         }
@@ -137,8 +143,9 @@ const Signup = () => {
               onChange={handleChange}
               className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
             >
-              <option value="staff">Staff</option>
-              <option value="admin">Admin</option>
+              <option value="IT">IT</option>
+              <option value="Sales">Sales</option>
+              <option value="Admin">Admin</option>
             </select>
           </div>
 

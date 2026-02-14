@@ -8,6 +8,7 @@ class User(AbstractUser):
         ('admin', 'Admin'),
         ('staff', 'Staff'),
         ('student', 'Student'),
+        ('sales', 'Sales'),
     )
     user_type = models.CharField(max_length=10, choices=USER_TYPE_CHOICES, default='student')
     is_verified = models.BooleanField(default=False)
