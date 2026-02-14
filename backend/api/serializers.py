@@ -2,6 +2,7 @@ from rest_framework import serializers
 from rest_framework_simplejwt.tokens import RefreshToken
 from .models import User, Attendance
 from .models import Task
+from .models import Lead
 
 
 class UserSerializer(serializers.ModelSerializer):
@@ -69,3 +70,12 @@ class LoginSerializer(serializers.Serializer):
 
         data['user'] = user
         return data
+
+
+class LeadSerializer(serializers.ModelSerializer):
+    assigned_to_username = serializers.CharField(source='assigned_to.username', read_only=True)
+
+    class Meta:
+        model = Lead
+        fields = ('id', 'name', 'email', 'phone', 'city', 'source', 'status', 'assigned_to', 'assigned_to_username', 'external_id', 'form_id', 'raw_data', 'created_at', 'updated_at')
+        read_only_fields = ('id', 'created_at', 'updated_at')

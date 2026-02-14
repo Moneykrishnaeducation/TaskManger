@@ -218,6 +218,17 @@ export const getAdminStats = async () => {
   }
 };
 
+export const uploadLeadsCSV = async (file) => {
+  const form = new FormData();
+  form.append('file', file);
+
+  const response = await adminApi.post('/upload_leads_csv/', form, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+    timeout: 120000,
+  });
+  return response.data;
+};
+
 // STAFF APIs
 export const getStaffTasks = async () => {
   const response = await staffApi.get('/staff/tasks/');

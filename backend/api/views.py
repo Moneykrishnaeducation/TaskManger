@@ -10,9 +10,17 @@ from django.urls import path
 from django.utils import timezone
 from datetime import datetime
 import os
+import requests
+import logging
 from .models import User, Attendance, Task
 from .serializers import UserSerializer, RegisterSerializer, LoginSerializer, AttendanceSerializer, TaskSerializer
 from rest_framework import permissions
+from .models import Lead
+from .serializers import LeadSerializer
+from rest_framework.views import APIView
+from rest_framework.parsers import MultiPartParser, FormParser
+import csv
+from io import TextIOWrapper
 
 
 class IsAdminUser(permissions.BasePermission):
@@ -310,3 +318,223 @@ class SPAView(View):
             return FileResponse(open(index_path, 'rb'), content_type='text/html')
         else:
             return Response({'error': 'Frontend not found'}, status=404)
+
+
+class FetchMetaLeadsView(APIView):
+    permission_classes = [IsAuthenticated, IsAdminUser]
+
+    def post(self, request):
+        logger = logging.getLogger(__name__)
+
+        # Prefer explicit FACEBOOK_* settings (used by lead.py); fall back to FB_* names
+        fb_app_id = getattr(settings, 'FACEBOOK_APP_ID', None) or os.getenv('FACEBOOK_APP_ID')
+        fb_app_secret = getattr(settings, 'FACEBOOK_APP_SECRET', None) or os.getenv('FACEBOOK_APP_SECRET')
+        access_token = (
+            getattr(settings, 'FACEBOOK_ACCESS_TOKEN', None)
+            or getattr(settings, 'FB_ACCESS_TOKEN', None)
+            or os.getenv('FACEBOOK_ACCESS_TOKEN')
+            or os.getenv('FB_ACCESS_TOKEN')
+        )
+
+        # Support either a single FACEBOOK_PAGE_ID or comma-separated FB_PAGE_IDS
+        page_ids_setting = (
+            getattr(settings, 'FACEBOOK_PAGE_ID', None)
+            or getattr(settings, 'FB_PAGE_IDS', None)
+            or os.getenv('FACEBOOK_PAGE_ID')
+            or os.getenv('FB_PAGE_IDS')
+        )
+
+        api_version = (
+            getattr(settings, 'FB_API_VERSION', None)
+            or getattr(settings, 'FACEBOOK_API_VERSION', None)
+            or os.getenv('FB_API_VERSION')
+            or os.getenv('FACEBOOK_API_VERSION')
+            or '14.0'
+        )
+
+        if not access_token or not page_ids_setting:
+            return Response({'error': 'Facebook credentials (access token and page id(s)) must be configured in settings'}, status=status.HTTP_400_BAD_REQUEST)
+
+        # Normalize to list of page ids
+        page_ids_str = str(page_ids_setting)
+        if ',' in page_ids_str:
+            page_list = [p.strip() for p in page_ids_str.split(',') if p.strip()]
+        else:
+            page_list = [page_ids_str.strip()]
+
+        created = 0
+        skipped = 0
+        errors = []
+
+        for page_id in page_list:
+            try:
+                forms_url = f"https://graph.facebook.com/v{api_version}/{page_id}/leadgen_forms?access_token={access_token}"
+                resp = requests.get(forms_url, timeout=20)
+                resp.raise_for_status()
+                forms_data = resp.json().get('data', [])
+
+                for form in forms_data:
+                    form_id = form.get('id')
+                    if not form_id:
+                        continue
+
+                    # fetch leads for this form
+                    leads_url = f"https://graph.facebook.com/v{api_version}/{form_id}/leads?access_token={access_token}"
+                    lresp = requests.get(leads_url, timeout=20)
+                    lresp.raise_for_status()
+                    leads_data = lresp.json().get('data', [])
+
+                    for lead in leads_data:
+                        external_id = lead.get('id')
+                        created_time = lead.get('created_time')
+                        field_data = lead.get('field_data') or []
+
+                        # parse fields flexibly
+                        lead_info = {
+                            'name': None,
+                            'email': None,
+                            'phone': None,
+                            'city': None,
+                            'source': 'facebook',
+                        }
+
+                        # field_data can be list of dicts with 'name' and 'values' or 'values' list
+                        for item in field_data:
+                            # support both {'name': 'email', 'values': ['a@b.com']} and {'name': 'email', 'values': [{'value':'a@b.com'}]}
+                            key = item.get('name') or item.get('field') or None
+                            values = item.get('values') or item.get('value') or []
+                            if isinstance(values, list) and values:
+                                # try to extract string
+                                val = None
+                                first = values[0]
+                                if isinstance(first, dict):
+                                    val = first.get('value') or first.get('name')
+                                else:
+                                    val = first
+                            elif isinstance(values, dict):
+                                val = values.get('value') or values.get('name')
+                            else:
+                                val = values
+
+                            if not key or val is None:
+                                continue
+
+                            k = key.lower()
+                            v = str(val).strip()
+                            if 'email' in k:
+                                lead_info['email'] = v
+                            elif 'phone' in k or 'mobile' in k:
+                                lead_info['phone'] = v
+                            elif 'name' in k:
+                                lead_info['name'] = v
+                            elif 'city' in k or 'town' in k:
+                                lead_info['city'] = v
+                            else:
+                                # unknown fields go into raw_data below
+                                pass
+
+                        # dedupe by external_id first, then email/phone
+                        if external_id and Lead.objects.filter(external_id=external_id).exists():
+                            skipped += 1
+                            continue
+
+                        email = lead_info.get('email')
+                        phone = lead_info.get('phone')
+                        if (email and Lead.objects.filter(email__iexact=email).exists()) or (phone and Lead.objects.filter(phone=phone).exists()):
+                            skipped += 1
+                            continue
+
+                        # create lead record
+                        try:
+                            lead_obj = Lead.objects.create(
+                                name=lead_info.get('name'),
+                                email=lead_info.get('email'),
+                                phone=lead_info.get('phone'),
+                                city=lead_info.get('city'),
+                                source='facebook',
+                                external_id=external_id,
+                                form_id=form_id,
+                                raw_data=lead,
+                                created_at=created_time if created_time else timezone.now()
+                            )
+                            created += 1
+                        except Exception as e:
+                            logger.exception('Error creating lead')
+                            errors.append(str(e))
+            except Exception as e:
+                errors.append(f"page {page_id}: {str(e)}")
+
+        return Response({
+            'success': True,
+            'created': created,
+            'skipped': skipped,
+            'errors': errors
+        }, status=status.HTTP_200_OK)
+
+
+class UploadLeadsCSVView(APIView):
+    permission_classes = [IsAuthenticated, IsAdminUser]
+    parser_classes = [MultiPartParser, FormParser]
+
+    def post(self, request):
+        logger = logging.getLogger(__name__)
+        if 'file' not in request.FILES:
+            return Response({'error': 'No file uploaded'}, status=status.HTTP_400_BAD_REQUEST)
+
+        f = request.FILES['file']
+        # Support text/csv uploads
+        try:
+            stream = TextIOWrapper(f.file, encoding='utf-8')
+        except Exception:
+            return Response({'error': 'Unable to read uploaded file'}, status=status.HTTP_400_BAD_REQUEST)
+
+        reader = csv.DictReader(stream)
+        required = set(['name', 'email', 'phone', 'city'])
+        created = 0
+        skipped = 0
+        errors = []
+
+        # gather active staff for round-robin assignment
+        staff_qs = User.objects.filter(user_type='staff', is_active=True)
+        staff_list = list(staff_qs)
+        staff_count = len(staff_list)
+        rr_index = 0
+
+        for i, row in enumerate(reader):
+            try:
+                # normalize keys to lower-case
+                row_lc = {k.strip().lower(): (v.strip() if v is not None else '') for k, v in row.items()}
+
+                # ensure at least one identifier
+                email = row_lc.get('email') or row_lc.get('mail-id') or row_lc.get('mail')
+                phone = row_lc.get('phone') or row_lc.get('number') or row_lc.get('mobile')
+                name = row_lc.get('name') or ''
+                city = row_lc.get('city') or ''
+
+                # dedupe by external_id not available for CSV; use email/phone
+                if email and Lead.objects.filter(email__iexact=email).exists():
+                    skipped += 1
+                    continue
+                if phone and Lead.objects.filter(phone=phone).exists():
+                    skipped += 1
+                    continue
+
+                assigned = None
+                if staff_count > 0:
+                    assigned = staff_list[rr_index % staff_count]
+                    rr_index += 1
+
+                lead = Lead.objects.create(
+                    name=name or None,
+                    email=email or None,
+                    phone=phone or None,
+                    city=city or None,
+                    source='csv',
+                    assigned_to=assigned
+                )
+                created += 1
+            except Exception as e:
+                logger.exception('Error creating lead from CSV')
+                errors.append({'row': i+1, 'error': str(e)})
+
+        return Response({'success': True, 'created': created, 'skipped': skipped, 'errors': errors}, status=status.HTTP_200_OK)

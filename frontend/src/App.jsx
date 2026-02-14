@@ -11,6 +11,7 @@ import AdminManageTasks from './pages/admin/ManageTasks';
 import AdminManageUsers from './pages/admin/ManageUsers';
 import AdminAnalytics from './pages/admin/Analytics';
 import AdminManageAttendance from './pages/admin/ManageAttendance';
+import AdminManageLeads from './pages/admin/ManageLeads';
 
 import StaffPrivateRoute from './components/staff/PrivateRoute';
 import StaffLayout from './components/staff/StaffLayout';
@@ -62,6 +63,7 @@ function App() {
           <Route path="/admin/tasks" element={<AdminManageTasks />} />
           <Route path="/admin/users" element={<AdminManageUsers />} />
           <Route path="/admin/attendance" element={<AdminManageAttendance />} />
+          <Route path="/admin/leads" element={<AdminManageLeads />} />
           <Route path="/admin/analytics" element={<AdminAnalytics />} />
         </Route>
 
